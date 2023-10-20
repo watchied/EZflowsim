@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GoJS Sample Using DataInspector</title>
+    <!-- Copyright 1998-2019 by Northwoods Software Corporation. -->
+    <meta charset="UTF-8">
+    <script src="https://unpkg.com/gojs"></script>
+    <link rel="stylesheet" href="../extensions/DataInspector.css" />
+    <script src="../extensions/DataInspector.js"></script>
+    <style>
+        #myFlexDiv {
+            display: flex;
+            width: 100%;
+            height: 600px;
+        }
+
+        #myPODiv {
+            display: flex;
+        }
+
+        @media (min-width: 768px) {
+            #myFlexDiv {
+                flex-flow: row;
+            }
+
+            #myPODiv {
+                width: 105px;
+                height: 100%;
+                margin-right: 3px;
+                flex-flow: column;
+            }
+
+            #myPaletteDiv {
+                height: 80%;
+            }
+
+            #myOverviewDiv {
+                margin-top: 3px;
+                flex: 1;
+            }
+
+            #myDiagramDiv {
+                flex: 1;
+            }
+        }
+
+        @media (max-width: 767px) {
+            #myFlexDiv {
+                flex-flow: column;
+                align-items: center;
+            }
+
+            #myPODiv {
+                width: 90%;
+                height: 105px;
+                margin-bottom: 3px;
+                flex-flow: row;
+            }
+
+            #myPaletteDiv {
+                width: 75%;
+            }
+
+            #myOverviewDiv {
+                margin-left: 3px;
+                flex: 1;
+            }
+
+            #myDiagramDiv {
+                width: 90%;
+                flex: 1;
+            }
+        }
+    </style>
+    <script id="code">
+        /*function getVar() {
+          var x = document.getElementById("funny").innerHTML;
+          document.getElementById("demo").innerHTML = x;
+        }*/
+        function init() {
+            var $ = go.GraphObject.make;
+            var s = 1;
+            var aw = go.Diagram;
+            let k = { key: 3, text: "Delta", color: "pink" };
+
+
+            /*itemtemplates.add("text",
+              $(go.Panel,
+                $(go.TextBlock,
+                  new go.Binding("text"))
+              ));*/
+
+
+
+            myDiagram =
+                $(go.Diagram, "myDiagramDiv",
+                    { "undoManager.isEnabled": true });
+
+            myDiagram.nodeTemplate =  // regular action steps
+                $(go.Node, "Auto", nodeStyle(),
+                    { deletable: true },  // override nodeStyle()
+                    { minSize: new go.Size(10, 20) },
+                    $(go.Shape, shapeStyle()),
+                    $(go.TextBlock, textStyle(),
+                        { margin: 4 })
+                );
+
+            myDiagram.nodeTemplateMap.add("Start",
+                $(go.Node, "Auto", nodeStyle(),
+                    { desiredSize: new go.Size(32, 32) },
+                    $(go.Shape, "Circle", shapeStyle()),
+                    $(go.TextBlock, textStyle(), "Start")
+                ));
+
+            myDiagram.nodeTemplateMap.add("End",
+                $(go.Node, "Auto", nodeStyle(),
+                    { desiredSize: new go.Size(32, 32) },
+                    $(go.Shape, "Circle", shapeStyle()),
+                    $(go.TextBlock, textStyle(), "End")
+                ));
+
+            myDiagram.nodeTemplateMap.add("For",
+                $(go.Node, "Auto", nodeStyle(),
+                    { minSize: new go.Size(64, 32) },
+                    $(go.Shape, "ForEach", shapeStyle()),
+                    $(go.TextBlock, textStyle(), "For Each",
+                        { margin: 4 })
+                ));
+
+            myDiagram.nodeTemplateMap.add("EndFor",
+                $(go.Node, nodeStyle(),
+                    $(go.Shape, "EndForEach", shapeStyle(),
+                        { desiredSize: new go.Size(4, 4) })
+                ));
+
+            myDiagram.nodeTemplateMap.add("While",
+                $(go.Node, "Auto", nodeStyle(),
+                    { minSize: new go.Size(32, 32) },
+                    $(go.Shape, "ForEach", shapeStyle(),
+                        { angle: -90, spot2: new go.Spot(1, 1, -6, 0) }),
+                    $(go.TextBlock, textStyle(), "While",
+                        { margin: 4 })
+                ));
+
+            myDiagram.nodeTemplateMap.add("EndWhile",
+                $(go.Node, nodeStyle(),
+                    $(go.Shape, "Circle", shapeStyle(),
+                        { desiredSize: new go.Size(4, 4) })
+                ));
+
+            myDiagram.nodeTemplateMap.add("If",
+                $(go.Node, "Auto", nodeStyle(),
+                    { minSize: new go.Size(64, 32) },
+                    $(go.Shape, "Diamond", shapeStyle()),
+                    $(go.TextBlock, textStyle(), "If")
+                ));
+
+            myDiagram.nodeTemplateMap.add("EndIf",
+                $(go.Node, nodeStyle(),
+                    $(go.Shape, "Diamond", shapeStyle(),
+                        { desiredSize: new go.Size(4, 4) })
+                ));
+
+            myDiagram.nodeTemplateMap.add("Switch",
+                $(go.Node, "Auto", nodeStyle(),
+                    { minSize: new go.Size(64, 32) },
+                    $(go.Shape, "TriangleUp", shapeStyle()),
+                    $(go.TextBlock, textStyle(), "Switch")
+                ));
+
+            myDiagram.nodeTemplateMap.add("Merge",
+                $(go.Node, nodeStyle(),
+                    $(go.Shape, "TriangleDown", shapeStyle(),
+                        { desiredSize: new go.Size(4, 4) })
+                ));
+
+
+            myPalette =
+                $(go.Palette, "myPaletteDiv",
+                    {
+                        maxSelectionCount: 1,
+                        nodeTemplateMap: myDiagram.nodeTemplateMap,
+                        model: new go.GraphLinksModel([
+                            { text: "Action" },
+                            { text: "For Each", category: "For" },
+                            { text: "While", category: "While" },
+                            { text: "If", category: "If" }
+                        ])
+                    });
+
+            /*var ef = myDiagram.findNodeDataForKey("2")*/
+
+
+            /*document.write(olo);*/
+
+
+
+
+
+            /*var dataObj = myDiagram.model.findNodeDataForKey("2");
+            myDiagram.model.set(dataObj, "color", x);*/
+
+
+
+
+
+
+        }
+
+
+
+
+        /*function copyNodeDataFunction(object, model) {
+          var newObject = {}
+          Object.keys(object).forEach(function(key){
+            if(key != "__gohashid" && key !="id")
+              newObject[key] = object[key];
+          });
+          return newObject;
+        }*/
+    </script>
+</head>
+
+<body onload="init()" onload="onit()">
+    <form id="nse">
+        <input id="funny" type="text" name="color">
+        <input type="button" onclick="getVar()" value="play">
+    </form>
+    <p id="demo"></p>
+    <div id="myPaletteDiv" style="background-color: floralwhite; border: solid 1px black"></div>
+    <div id="myDiagramDiv" style="border: solid 1px black"></div>
+
+    <div id="myInspectorDiv" class="inspector"></div>
+    
+
+</body>
+
+</html>

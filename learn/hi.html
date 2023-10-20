@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Minimal GoJS Sample</title>
+<!-- Copyright 1998-2017 by Northwoods Software Corporation. -->
+<meta charset="UTF-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gojs/1.7.28/go-debug.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.4/lodash.min.js"></script>
+<script id="code">
+  function init() {
+    var $ = go.GraphObject.make;
+
+    diagram =
+      $(go.Diagram, "myDiagramDiv",
+        {
+          initialContentAlignment: go.Spot.Center,
+          layout: $(go.GridLayout)
+        });
+
+    diagram.nodeTemplate =
+      $(go.Node, "Vertical",
+        $(go.TextBlock, new go.Binding("text", "goKey")),
+        $(go.TextBlock, new go.Binding("text", "goType"))
+      );
+
+    var model = new go.GraphLinksModel();
+    model.nodeKeyProperty = 'goKey';
+    model.nodeCategoryProperty = 'goType';
+    model.addNodeDataCollection([
+      {
+        goKey: 'instance1',
+        goType: 'component',
+        //other data
+      }, {
+        goKey: 'instance2',
+        goType: 'tcp',
+        //other data
+      }, {
+        goKey: 'instance3',
+        goType: 'tcp',
+        //other data
+      }]);
+    diagram.model = model;
+    console.log(diagram.findNodesByExample({}).count); //3
+    console.log(diagram.model.nodeDataArray.length); //3 
+
+    diagram.findNodeForData
+  }
+    
+
+
+  function replaceTwo() {
+    var model = diagram.model;
+    model.startTransaction();
+    var item2 = _.find(model.nodeDataArray, { goKey: 'instance2' });
+    var item3 = _.find(model.nodeDataArray, { goKey: 'instance3' });
+    model.removeNodeData(item2);
+    model.removeNodeData(item3);
+    console.log(model.nodeDataArray.length); //1
+    console.log(diagram.findNodesByExample({}).count); //1
+
+    model.addNodeDataCollection([{
+      goKey: 'instance2',
+      goType: 'tcp',
+      //other data
+    }, {
+      goKey: 'instance3',
+      goType: 'tcp',
+      //other data
+      }]);
+    model.commitTransaction("replace two");
+
+    console.log(diagram.model.nodeDataArray.length); //3
+    console.log(diagram.findNodesByExample({}).count); //2??? -- No, I get 3
+    diagram.findNodesByExample({}).each(function(item) {
+      console.log(item.data.goKey);
+    });
+  }
+</script>
+</head>
+<body onload="init()">
+  <div id="myDiagramDiv" style="border: solid 1px black; width:100%; height:600px"></div>
+  <button onclick="replaceTwo()">Replace Two</button>
+</body>
+</html>

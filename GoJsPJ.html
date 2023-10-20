@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<script src="https://unpkg.com/gojs"></script>
+<link rel="stylesheet" href="../extensions/DataInspector.css" />
+<script src="../extensions/DataInspector.js"></script>
+<script id="code">
+    function init() {
+        var $ = go.GraphObject.make;
+        var c;
+        var f = 0;
+
+        diagram =
+            $(go.Diagram, "myDiagramDiv",
+                { "undoManager.isEnabled": true });
+
+        var itemtemplates = new go.Map(); // In TypeScript you could write: new go.Map<string, go.Panel>();
+
+        // the template when type == "text"
+        itemtemplates.add("text",
+            $(go.Panel,
+                $(go.TextBlock,
+                    new go.Binding("text"))
+            ));
+
+        // the template when type == "button"
+        itemtemplates.add("button",
+            $("Button",
+                $(go.TextBlock,
+                    new go.Binding("text")),
+                // convert a function name into a function value,
+                // because functions cannot be represented in JSON format
+                new go.Binding("click", "handler",
+                    function (name) {
+                        if (name === "alert") return raiseAlert;  // defined below
+                        return null;
+                        if (name === "type") return f;
+                        return null;                   })
+            ));
+
+        diagram.nodeTemplate =
+            $(go.Node, "Vertical",
+                $(go.TextBlock,
+                    new go.Binding("text", "key")),
+                $(go.Panel, "Auto",
+                    $(go.Shape, { fill: "white" }),
+                    $(go.Panel, "Vertical",
+                        {
+                            margin: 3,
+                            defaultAlignment: go.Spot.Left,
+                            itemCategoryProperty: "type",  // this property controls the template used
+                            itemTemplateMap: itemtemplates  // map was defined above
+                        },
+                        new go.Binding("itemArray", "info"))
+                )
+            );
+
+        function raiseAlert(e, obj) {  // here OBJ will be the item Panel
+            var node = obj.part;
+            alert(node.data.key + ": " + obj.data.text);
+        }
+
+        // The model data includes item arrays in the node data.
+        diagram.model = new go.GraphLinksModel([
+            {
+                key: "Alpha",
+                info: [
+                    { type: "text", text: "some text" },
+                    { type: "button", text: "Click me!", handler: "alert" }
+                ]
+            },
+            {
+                key: "Beta",
+                info: [
+                    { type: "text", text: "first line" },
+                    { type: "button", text: "First Button", handler: "alert" },
+                    { type: "text", text: "second line" },
+                    { type: "button", text: "Second Button", handler: "type" }
+                ]
+            }
+        ], [
+            { from: "Alpha", to: "Beta" }
+        ]);
+
+
+    }
+
+
+</script>
+
+<body onload="init()">
+    <div id="myDiagramDiv" style="border: solid 1px black; width:100%; height:600px"></div>
+</body>
+
+</html>

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<body>
+  <script src="https://unpkg.com/gojs@2.2.14/release/go.js"></script>
+
+  <div id="allSampleContent" class="p-4 w-full">
+    <style type="text/css">
+      /*ตรงแผนเลือกnodeและinfo*/
+      .draggable {
+        display: inline-block;
+        vertical-align: top;
+        border: 4px solid #BBB;
+        border-radius: 4px;
+        background-color: #F5F5F5;
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        z-index: 500;
+      }
+
+      .handle {
+        background-color: lightblue;
+        cursor: move;
+        text-align: center;
+        font: bold 12px sans-serif;
+      }
+
+      #infoDraggable {
+        font: 12px helvetica, sans-serif;
+        min-width: 213px;
+      }
+
+      #myInfo {
+        width: 100%;
+        overflow: hidden;
+      }
+
+      #myPaletteDiv {
+        background-color: #F5F5F5;
+        width: 100%;
+        height: 100%;
+      }
+
+      /*
+  One simple way of making a div fill its space,
+  with allowances for the title (top) and the resize handle (bottom)
+  */
+      #paletteContainer {
+        position: absolute;
+        bottom: 14px;
+        left: 0px;
+        right: 0px;
+        top: 14px;
+      }
+    </style>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"
+      integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"
+      integrity="sha256-VazP97ZCwtekAsvgPBSUwPFKdrwD3unUfSGVYrahUqU=" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/gojs@2.2.14/extensions/Figures.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/gojs@2.2.14/extensions/DataInspector.css">
+    <script
+      src="https://unpkg.com/gojs@2.2.14/extensions/DataInspector.js">//พวกสคริปเสริมใช้ให้เปลี่ยนfigureได้มากขึ้น</script>
+
+    <script id="code">
+      function init() {
+        //if (window.goSamples) goSamples();  // init for these samples -- you don't need to call this
+
+        // Note that we do not use $ here as an alias for go.GraphObject.make because we are using $ for jQuery
+        // Since 2.2 you can also author concise templates with method chaining instead of GraphObject.make
+        // For details, see https://gojs.net/latest/intro/buildingObjects.html
+        var GO = go.GraphObject.make;  // for conciseness in defining templates
+
+        myDiagram =
+          GO(go.Diagram, "myDiagramDiv",
+            { "undoManager.isEnabled": true });
+
+        // define several shared Brushes
+        var fill1 = "rgb(105,210,231)"
+        var brush1 = "rgb(65,180,181)";
+
+        var fill2 = "rgb(167,219,216)"
+        var brush2 = "rgb(127,179,176)";
+
+        var fill3 = "rgb(224,228,204)"
+        var brush3 = "rgb(184,188,164)";
+
+        var fill4 = "rgb(243,134,48)"
+        var brush4 = "rgb(203,84,08)";
+
+        myDiagram.nodeTemplateMap.add("", // default category
+          GO(go.Node, "Auto",
+            { locationSpot: go.Spot.Center },
+            new go.Binding("location", "loc", go.Point.parse).makeTwoWay(go.Point.stringify),
+            GO(go.Shape, "Ellipse",
+              { strokeWidth: 2, fill: fill1, name: "SHAPE" },
+              new go.Binding("figure", "figure"),
+              new go.Binding("fill", "fill"),
+              new go.Binding("stroke", "stroke")
+            ),
+            GO(go.TextBlock,
+              {
+                margin: 5,
+                maxSize: new go.Size(200, NaN),
+                wrap: go.TextBlock.WrapFit,
+                textAlign: "center",
+                editable: true,
+                font: "bold 9pt Helvetica, Arial, sans-serif",
+                name: "TEXT"
+              },
+              new go.Binding("text", "figure").makeTwoWay())));
+
+        // On selection changed, make sure infoDraggable will resize as necessary
+        myDiagram.addDiagramListener("ChangedSelection", diagramEvent => {
+          var idrag = document.getElementById("infoDraggable");
+          idrag.style.width = "";
+          idrag.style.height = "";
+        });
+
+        //var dataofall =[];
+        myDiagram.addDiagramListener("ExternalObjectsDropped",
+          function (e) {
+
+
+            e.subject(function (node) {
+
+
+              var data = node.data;
+              const model = myDiagram.model;
+              data.key = x;
+              m = data.text;
+              console.log("key: " + data.key);
+              console.log("old id: " + m);
+              data.id = data.key;
+              console.log("new id: " + data.id);
+              x += 1;
+              dataofall.push(data);
+
+
+
+
+            });
+
+
+
+          })
+
+
+        // initialize the Palette that is in a floating, draggable HTML container
+        myPalette = new go.Palette("myPaletteDiv");  // must name or refer to the DIV HTML element
+        myPalette.nodeTemplateMap = myDiagram.nodeTemplateMap;
+        myPalette.model = new go.GraphLinksModel([
+          { text: "Input", fill: fill1, stroke: brush1, figure: "Input", key: -1 },
+          { text: "Output", fill: fill2, stroke: brush2, figure: "Input", key: -100 },
+          { text: "Declare", fill: fill3, stroke: brush3, figure: "InternalStorage", key: -200 },
+          { text: "Main", fill: fill4, stroke: brush4, figure: "Terminator", key: -300 },
+          { text: "End", fill: fill4, stroke: brush4, figure: "Terminator", key: -400 },
+          { text: "Assign", fill: fill4, stroke: brush4, figure: "Rectangle", key: -500 },
+          { text: "If", fill: fill4, stroke: brush4, figure: "Decision", key: -600 },
+          { text: "Call", fill: fill4, stroke: brush4, figure: "Procedure"/*Subroutine*/, key: -700 },
+          { text: " ", fill: fill4, stroke: brush4, figure: "FloppyDisk", key: -800 },
+          { text: "While,For,Do", fill: fill4, stroke: brush4, figure: "OffPageConnector", key: -900 }
+
+        ]);
+
+        myPalette.addDiagramListener("InitialLayoutCompleted", diagramEvent => {
+          var pdrag = document.getElementById("paletteDraggable");
+          var palette = diagramEvent.diagram;
+          pdrag.style.width = palette.documentBounds.width + 28 + "px"; // account for padding/borders
+          pdrag.style.height = palette.documentBounds.height + 38 + "px";
+        });
+
+
+        $(() => {
+          $("#paletteDraggable").draggable({ handle: "#paletteDraggableHandle" }).resizable({
+            // After resizing, perform another layout to fit everything in the palette's viewport
+            stop: () => myPalette.layoutDiagram(true)
+          });
+
+          $("#infoDraggable").draggable({ handle: "#infoDraggableHandle" }); /*ขยับinfoได้*/
+
+
+          var inspector = new Inspector('myInfo', myDiagram,
+            {
+              properties: {
+                // key would be automatically added for nodes, but we want to declare it read-only also:
+                "key": { readOnly: true, show: Inspector.showIfPresent },
+                // fill and stroke would be automatically added for nodes, but we want to declare it a color also:
+                "fill": { show: Inspector.showIfPresent, type: 'color' },
+                "stroke": { show: Inspector.showIfPresent, type: 'color' }
+              }
+            });
+        });
+
+      }
+
+      window.addEventListener('DOMContentLoaded', init);
+    </script>
+
+    <div id="sample">
+
+      <div id="paletteDraggable" class="draggable ui-draggable ui-resizable"
+        style="height: 233.824px; width: 123.803px;">
+        <div id="paletteDraggableHandle" class="handle ui-draggable-handle">Palette</div>
+        <div id="paletteContainer">
+          <div id="myPaletteDiv" style="position: relative; -webkit-tap-highlight-color: rgba(255, 255, 255, 0);">
+            <canvas tabindex="0" width="217" height="371"
+              style="position: absolute; top: 0px; left: 0px; z-index: 2; user-select: none; touch-action: none; width: 116px; height: 198px;">This
+              text is displayed if your browser does not support the Canvas HTML element.</canvas>
+            <div style="position: absolute; overflow: auto; width: 116px; height: 198px; z-index: 1;">
+              <div style="position: absolute; width: 1px; height: 1px;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="ui-resizable-handle ui-resizable-e" style="z-index: 90;"></div>
+        <div class="ui-resizable-handle ui-resizable-s" style="z-index: 90;"></div>
+        <div class="ui-resizable-handle ui-resizable-se ui-icon ui-icon-gripsmall-diagonal-se" style="z-index: 90;">
+        </div>
+      </div>
+
+      <div id="infoDraggable" class="draggable ui-draggable"
+        style="display: inline-block; vertical-align: top; padding: 5px; top: 20px; left: 380px;">
+        <div id="infoDraggableHandle" class="handle ui-draggable-handle">Info</div>
+        <div>
+          <div id="myInfo" class="inspector"></div>
+        </div>
+      </div>
+
+      <div style="display: inline-block; vertical-align: top; width:400px">
+        <div id="myDiagramDiv"
+          style="background-color: whitesmoke; border: 1px solid black; height: 400px; position: relative; -webkit-tap-highlight-color: rgba(255, 255, 255, 0);">
+          <canvas tabindex="0" width="746" height="746"
+            style="position: absolute; top: 0px; left: 0px; z-index: 2; user-select: none; touch-action: none; width: 398px; height: 398px;">This
+            text is displayed if your browser does not support the Canvas HTML element.</canvas>
+          <div style="position: absolute; overflow: auto; width: 398px; height: 398px; z-index: 1;">
+            <div style="position: absolute; width: 1px; height: 1px;"></div>
+          </div>
+        </div>
+      </div>
+
+
+
+
+
+      <p class="text-xs">GoJS version 2.2.14. Copyright 1998-2022 by Northwoods Software.</p>
+    </div>
+    <p><a href="https://github.com/NorthwoodsSoftware/GoJS/blob/master/samples/htmlInteraction.html"
+        target="_blank">View this sample page's source on GitHub</a></p>
+  </div>
+</body>
+
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GoJS Sample Using DataInspector</title>
+    <!-- Copyright 1998-2019 by Northwoods Software Corporation. -->
+    <meta charset="UTF-8">
+    <script src="https://unpkg.com/gojs"></script>
+    <link rel="stylesheet" href="../extensions/DataInspector.css" />
+    <script src="../extensions/DataInspector.js"></script>
+    <script id="code">
+        /*function getVar() {
+          var x = document.getElementById("funny").innerHTML;
+          document.getElementById("demo").innerHTML = x;
+        }*/
+        function init() {
+            var $ = go.GraphObject.make;
+            var s = 1;
+            var aw = go.Diagram;
+            let k = { key: 3, text: "Delta", color: "pink" };
+
+
+            /*itemtemplates.add("text",
+              $(go.Panel,
+                $(go.TextBlock,
+                  new go.Binding("text"))
+              ));*/
+
+
+
+            diagram =
+                $(go.Diagram, "myDiagramDiv",
+                    { "undoManager.isEnabled": true });
+
+            function MouseEnter(e, obj) {
+                
+                3
+            };
+
+            function MouseLeave(e, obj) {
+                var shape = obj.findObject("SHAPE");
+                // Return the Shape's fill and stroke to the defaults
+                shape.fill = obj.data.color;
+                shape.stroke = null;
+                // Return the TextBlock's stroke to its default
+                var text = obj.findObject("TEXT");
+                text.stroke = "black";
+            };
+
+            diagram.nodeTemplate =
+                $(go.Node, "Auto",
+                    {
+                        mouseEnter: MouseEnter,
+                        mouseLeave: MouseLeave
+                    },
+                    $(go.Shape, "Rectangle",
+                        { strokeWidth: 2, stroke: null, name: "SHAPE" },
+                        new go.Binding("fill", "color"),
+                        new go.Binding("figure","figure"),
+                        new go.Binding("geometryString", "shapecode")),
+                    $(go.TextBlock,
+                        { margin: 10, font: "bold 18px Verdana", name: "TEXT" },
+                        new go.Binding("text", "text"))
+                );
+
+            diagram.model = new go.GraphLinksModel(
+                [
+                    { key: 0, text: "assign", color: "#96D6D9", shapecode:"F M0 0 L10 10 10 100z"},
+                    { key: 1, text: "beta", color: "#96D6D9", figure:"Diamond"},
+                    { key: 2, text: "delta", color: "#EFEBCA" },
+                    { key: 3, text: "gamma", color: "#EFEBCA" }
+                ],
+                [
+                    { from: 0, to: 1 },
+                    { from: 1, to: 3 }
+
+                ]);
+            /*var dataObj = myDiagram.model.findNodeDataForKey("2");
+            myDiagram.model.set(dataObj, "color", x);*/
+
+
+
+
+        };
+
+
+
+
+
+
+
+
+
+
+        /*function copyNodeDataFunction(object, model) {
+          var newObject = {}
+          Object.keys(object).forEach(function(key){
+            if(key != "__gohashid" && key !="id")
+              newObject[key] = object[key];
+          });
+          return newObject;
+        }*/
+    </script>
+</head>
+
+<body onload="init()" onload="onit()">
+    <form id="nse">
+        <input id="funny" type="text" name="color">
+        <input type="button" onclick="getVar()" value="play">
+    </form>
+    <p id="demo"></p>
+    <div id="myDiagramDiv" style="border: solid 1px black; width:100%; height:600px"></div>
+
+
+    <p id="wdwd"></p>
+
+</body>
+
+</html>

@@ -1,0 +1,3590 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+    <meta name="description"
+        content="An editor for a flowchart-like diagram with a restricted syntax -- add nodes by dropping them onto existing nodes or links." />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+    <!-- Copyright 1998-2022 by Northwoods Software Corporation. -->
+    <title>EZFlowSim</title>
+</head>
+
+<body>
+    <!-- This top nav is not part of the sample code -->
+
+
+    <!-- * * * * * * * * * * * * * -->
+    <!-- Start of GoJS sample code -->
+
+    <script src="../release/go.js"></script>
+    <script src="../extensions/Figures.js"></script>
+    <script src="..\testgojs\projects\storage\lib\gcs.js"></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://js.live.net/v7.2/OneDrive.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dropbox.js/2.5.7/Dropbox-sdk.min.js"></script>
+    <script type="text/javascript" src="https://www.dropbox.com/static/api/2/dropins.js" id="dropboxjs"
+        data-app-key="3sm2ko6q7u1gbix"></script>
+    <link rel="stylesheet" type="text/css" href="GoCloudStorageUI.css" />
+    <div id="allSampleContent" class="p-4 w-full">
+        <script src="../extensions/Figures.js"></script>
+
+        <style>
+            /* Use a Flexbox to make the Palette/Overview/Diagram responsive and size things relatively */
+
+            #myFlexDiv {
+                display: flex;
+                width: 100%;
+                height: 600px;
+            }
+
+            #myPODiv {
+                display: flex;
+            }
+
+            @media (min-width: 768px) {
+                #myFlexDiv {
+                    flex-flow: row;
+                }
+
+                #myPODiv {
+                    width: 105px;
+                    height: 100%;
+                    margin-right: 3px;
+                    flex-flow: column;
+                }
+
+
+
+                #myPaletteDiv {
+                    height: 80%;
+                }
+
+                #myOverviewDiv {
+                    margin-top: 3px;
+                    flex: 1;
+                }
+
+                #myDiagramDiv {
+                    flex: 1;
+                }
+
+                #myOutDiv {
+                    width: 105px;
+                    height: 100%;
+                    left: 150px;
+                    margin-left: 3px;
+                    flex-flow: column;
+                }
+
+                #textOut {
+                    height: 89%;
+                    width: 100%;
+                }
+
+                input {
+                    margin-top: 3px;
+                    flex: 1;
+                    width: 100%;
+                    padding: 17px 20px;
+
+                }
+            }
+
+            @media (max-width: 767px) {
+                #myFlexDiv {
+                    flex-flow: column;
+                    align-items: center;
+                }
+
+                #myPODiv {
+                    width: 90%;
+                    height: 105px;
+                    margin-bottom: 3px;
+                    flex-flow: row;
+                }
+
+                #myPaletteDiv {
+                    width: 75%;
+                }
+
+                #myOverviewDiv {
+                    margin-left: 3px;
+                    flex: 1;
+                }
+
+                #myDiagramDiv {
+                    width: 90%;
+                    flex: 1;
+                }
+            }
+        </style>
+        <script src="../extensions/ParallelLayout.js"></script>
+        <script id="code">
+            // two custom figures, for "For Each" loops
+
+            go.Shape.defineFigureGenerator("ForEach", (shape, w, h) => {
+                var param1 = shape ? shape.parameter1 : NaN; // length of triangular area in direction that it is pointing
+                if (isNaN(param1)) param1 = 10;
+                var d = Math.min(h / 2, param1);
+                var geo = new go.Geometry();
+                var fig = new go.PathFigure(w, h - d, true);
+                geo.add(fig);
+                fig.add(new go.PathSegment(go.PathSegment.Line, w / 2, h));
+                fig.add(new go.PathSegment(go.PathSegment.Line, 0, h - d));
+                fig.add(new go.PathSegment(go.PathSegment.Line, 0, 0));
+                fig.add(new go.PathSegment(go.PathSegment.Line, w, 0).close());
+                geo.spot1 = go.Spot.TopLeft;
+                geo.spot2 = new go.Spot(1, 1, 0, Math.min(-d + 2, 0));
+                return geo;
+            });
+
+            go.Shape.defineFigureGenerator("EndForEach", (shape, w, h) => {
+                var param1 = shape ? shape.parameter1 : NaN; // length of triangular area in direction that it is pointing
+                if (isNaN(param1)) param1 = 10;
+                var d = Math.min(h / 2, param1);
+                var geo = new go.Geometry();
+                var fig = new go.PathFigure(w, d, true);
+                geo.add(fig);
+                fig.add(new go.PathSegment(go.PathSegment.Line, w, h));
+                fig.add(new go.PathSegment(go.PathSegment.Line, 0, h));
+                fig.add(new go.PathSegment(go.PathSegment.Line, 0, d));
+                fig.add(new go.PathSegment(go.PathSegment.Line, w / 2, 0).close());
+                geo.spot1 = new go.Spot(0, 0, 0, Math.min(d, 0));
+                geo.spot2 = go.Spot.BottomRight;
+                return geo;
+            });
+
+            function init() {
+
+                // Since 2.2 you can also author concise templates with method chaining instead of GraphObject.make
+                // For details, see https://gojs.net/latest/intro/buildingObjects.html
+                const $ = go.GraphObject.make;
+
+                // initialize main Diagram
+                myDiagram =
+                    $(go.Diagram, "myDiagramDiv",
+                        {
+                            allowMove: false,
+                            allowCopy: true,
+                            "SelectionDeleting": e => {  // before a delete happens
+                                // handle deletions by excising the node and reconnecting the link where the node had been
+                                new go.List(e.diagram.selection).each(part => deletingNode(part));
+                            },
+                            layout: $(ParallelLayout, { angle: 90, layerSpacing: 21, nodeSpacing: 30 }),
+                            "ExternalObjectsDropped": e => {  // handle drops from the Palette
+                                var newnode = e.diagram.selection.first();
+                                if (!newnode) return;
+                                if (!(newnode instanceof go.Group) && newnode.linksConnected.count === 0) {
+                                    // when the selection is dropped but not hooked up to the rest of the graph, delete it
+                                    e.diagram.removeParts(e.diagram.selection, false);
+                                } else {
+                                    e.diagram.commandHandler.scrollToPart(newnode);
+                                }
+                            },
+                            "undoManager.isEnabled": true
+                        });
+
+                // dragged nodes are translucent so that the user can see highlighting of links and nodes
+                myDiagram.findLayer("Tool").opacity = 0.5;
+
+                // some common styles for most of the node templates
+                var x;
+                function nodeStyle() {
+                    return {
+                        deletable: false,
+                        locationSpot: go.Spot.Center,
+                        mouseDragEnter: (e, node) => {
+
+                            var sh = node.findObject("SHAPE");
+                            x = sh.fill;
+                            if (sh) sh.fill = "lime";
+                        },
+                        mouseDragLeave: (e, node) => {
+                            var sh = node.findObject("SHAPE");
+
+                            if (sh) sh.fill = x;
+                        },
+                        mouseDrop: dropOntoNode
+                    };
+                }
+
+                function shapeStyle() {
+                    return { name: "SHAPE", fill: "white" };
+                }
+
+                function textStyle() {
+                    return [
+                        { name: "TEXTBLOCK", textAlign: "center", editable: true },
+                        new go.Binding("text").makeTwoWay()
+                    ];
+                }
+                var x = 0;
+
+
+                // define the Node templates
+                myDiagram.nodeTemplate =  // regular action steps
+                    $(go.Node, "Auto", nodeStyle(),
+                        { deletable: true },  // override nodeStyle()
+                        { minSize: new go.Size(10, 20) },
+                        $(go.Shape, { fill: "red", portId: "", fromLinkable: true, toLinkable: true, cursor: "pointer" }, shapeStyle(),
+                            new go.Binding("fromMaxLinks", "maxLinks"),
+                            new go.Binding("fill", "color"),
+                            new go.Binding("figure", "figure")),
+                        $(go.TextBlock, textStyle(),
+                            { margin: 4 },
+                            new go.Binding("text", "text"))
+                    );
+
+                myDiagram.nodeTemplateMap.add("Start",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { desiredSize: new go.Size(75, 35) },
+                        $(go.Shape, "Terminator", shapeStyle(),
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border"),
+                            new go.Binding("key", "key")),
+                        $(go.TextBlock, textStyle(), "Start")
+                    ));
+
+                myDiagram.nodeTemplateMap.add("End",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { desiredSize: new go.Size(75, 35) },
+                        $(go.Shape, "Terminator", shapeStyle(),
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border")),
+                        $(go.TextBlock, textStyle(), "End")
+                    ));
+
+                myDiagram.nodeTemplateMap.add("For",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { minSize: new go.Size(64, 32) },
+                        $(go.Shape, "Diamond", shapeStyle(),
+                            { angle: -90, spot2: new go.Spot(0.85, 0.85, -6, 0) },
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border")),
+                        $(go.TextBlock, textStyle(), "For",
+                            { margin: 4 })
+                    ));
+
+                myDiagram.nodeTemplateMap.add("EndFor",
+                    $(go.Node, nodeStyle(),
+                        $(go.Shape, { fill: "red" }, "EndForEach", shapeStyle(),
+                            { desiredSize: new go.Size(4, 4) },
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border"))
+                    ));
+
+                myDiagram.nodeTemplateMap.add("While",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { minSize: new go.Size(64, 32) },
+                        $(go.Shape, "Diamond", shapeStyle(),
+                            { angle: -90, spot2: new go.Spot(0.85, 0.85, -6, 0) },
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border")),
+                        $(go.TextBlock, textStyle(), "While",
+                            { margin: 4 })
+                    ));
+
+                myDiagram.nodeTemplateMap.add("Do",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { minSize: new go.Size(64, 32) },
+                        $(go.Shape, "Diamond", shapeStyle(),
+                            { angle: -90, spot2: new go.Spot(0.85, 0.85, -6, 0) },
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border")),
+                        $(go.TextBlock, textStyle(), "Do",
+                            { margin: 4 })
+                    ));
+
+                myDiagram.nodeTemplateMap.add("EndWhile",
+                    $(go.Node, nodeStyle(),
+                        $(go.Shape, "Circle", shapeStyle(),
+                            { desiredSize: new go.Size(4, 4) },
+                            new go.Binding("fill", "color"))
+                    ));
+
+                myDiagram.nodeTemplateMap.add("If",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { minSize: new go.Size(64, 32) },
+                        $(go.Shape, "Diamond", shapeStyle(),
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border")),
+                        $(go.TextBlock, textStyle(), "If")
+                    ));
+
+                myDiagram.nodeTemplateMap.add("Input",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { desiredSize: new go.Size(64, 32) },
+                        $(go.Shape, "Parallelogram", shapeStyle(),
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border")),
+                        $(go.TextBlock, textStyle(), "Input")
+                    ));
+
+                myDiagram.nodeTemplateMap.add("Assign",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { desiredSize: new go.Size(64, 32) },
+                        $(go.Shape, "Rectangle", shapeStyle(),
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border")),
+                        $(go.TextBlock, textStyle(), "Assign")
+                    ));
+
+                myDiagram.nodeTemplateMap.add("Declare",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { desiredSize: new go.Size(64, 32) },
+                        $(go.Shape, "InternalStorage", shapeStyle(),
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border")),
+                        $(go.TextBlock, textStyle(), "Declare")
+                    ));
+
+                myDiagram.nodeTemplateMap.add("Call",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { desiredSize: new go.Size(64, 32) },
+                        $(go.Shape, "Procedure", shapeStyle(),
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border")),
+                        $(go.TextBlock, textStyle(), "Call")
+                    ));
+
+                myDiagram.nodeTemplateMap.add("Output",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { desiredSize: new go.Size(64, 32) },
+                        $(go.Shape, "Parallelogram", shapeStyle(),
+                            new go.Binding("fill", "color"),
+                            new go.Binding("stroke", "border")),
+                        $(go.TextBlock, textStyle(), "Output")
+                    ));
+
+                myDiagram.nodeTemplateMap.add("EndIf",
+                    $(go.Node, nodeStyle(),
+                        $(go.Shape, "Circle", shapeStyle(),
+                            { desiredSize: new go.Size(4, 4) })
+                    ));
+
+                myDiagram.nodeTemplateMap.add("Switch",
+                    $(go.Node, "Auto", nodeStyle(),
+                        { minSize: new go.Size(64, 32) },
+                        $(go.Shape, "TriangleUp", shapeStyle()),
+                        $(go.TextBlock, textStyle(), "Switch")
+                    ));
+
+                myDiagram.nodeTemplateMap.add("Merge",
+                    $(go.Node, nodeStyle(),
+                        $(go.Shape, "TriangleDown", shapeStyle(),
+                            { desiredSize: new go.Size(4, 4) })
+                    ));
+
+                myDiagram.nodeTemplateMap.add("Merge",
+                    $(go.Node, nodeStyle(),
+                        $(go.Shape, "TriangleDown", shapeStyle(),
+                            { desiredSize: new go.Size(4, 4) })
+                    ));
+
+
+                /*myDiagram.nodeTemplateMap.add("RunP",
+                    $(go.Node, nodeStyle(),
+                        $(go.Shape, "Rectangle", shapeStyle(),
+                            { desiredSize: new go.Size(4, 4) }),
+                        $(go.Pannel, "Verticle", {magin: 3},
+                        $("Button",
+                        {
+                            magin: 2,
+                            click: GetText
+                        },
+                        ($go.TextBlock, "run flowchart")),
+                        ($go.TextBlock,
+                        new go.Binding("text","nodetext", 
+                        function (m) { return "This node is "+ m +" desu";})))
+                    ));*/
+
+                /*function GetText(m) {
+                    m = myDiagram.nodes.count;
+                    console.log("ได้ผลรวม "+ m());
+
+                }*/
+
+                //จะใช้ในการเปลี่ยนkeyของnodeที่นำเข้ามา
+                var dataofInput = [];
+                var dataofOutput = [];
+                var dataofAssign = [];
+                var dataofCall = [];
+                var dataofDeclare = [];
+                var keyofIf = [];
+                var keyofWhile = [];
+                var keyofFor = [];
+                var keyofDo = [];
+                var DI = 0;
+                var DO = 0;
+                var DA = 0;
+                var DC = 0;
+                var DD = 0;
+                var KI = 0;
+                var KW = 0;
+                var KF = 0;
+                var KD = 0;
+
+                myDiagram.addDiagramListener("ExternalObjectsDropped",
+                    function (e) {
+
+
+                        e.subject.each(function (node) {
+
+
+                            //console.log(node.data);
+
+                            var data = node.data;
+                            const model = myDiagram.model;
+                            //console.log(node.data)
+                            m = data.text;
+                            if (data.cat == "If") {
+                                keyofIf.push(data.key);
+                                //console.log(data.key);
+                                KI++;
+                                for (let i = 0; i < KI; i++) {
+                                    console.log(keyofIf[i]);
+                                }
+                            }
+                            if (data.cat == "While") {
+                                keyofWhile.push(data.key);
+                                //console.log(data.key);
+                                KW++;
+                                for (let i = 0; i < KW; i++) {
+                                    console.log(keyofWhile[i]);
+                                }
+                            }
+                            if (data.cat == "For") {
+                                keyofFor.push(data.key);
+                                //console.log(data.key);
+                                KF++;
+                                for (let i = 0; i < KF; i++) {
+                                    console.log(keyofFor[i]);
+                                }
+                            }
+                            if (data.cat == "Do") {
+                                keyofDo.push(data.key);
+                                //console.log(data.key);
+                                KD++;
+                                for (let i = 0; i < KD; i++) {
+                                    console.log(keyofDo[i]);
+                                }
+                            }
+                            data.order = k;
+                            k += 1;
+                            //console.log(newnode.data);
+                            //console.log("date num: " + data.order);
+                            //s = node.findSubGraphParts().each(eee());
+
+                            //console.log("old id: " + m);
+
+                            //console.log("new id: " + data.id);
+                            //console.log(m);
+
+                            //dataofall.push(s);
+
+
+
+
+                        });
+
+
+
+                    })
+                myDiagram.addDiagramListener("TextEdited",
+                    function (e) {
+
+                        var node = e.diagram.selection.first()
+                        console.log(node.data.text);
+                        if (node.data.category == "Input") {
+                            dataofInput.push(node.data.text)
+                            console.log("data is: " + node.data.text);
+                            DI++;
+                            for (let i = 0; i < DI; i++) {
+                                console.log(dataofInput[i]);
+                            }
+                        }
+
+                        else if (node.data.category == "Assign") {
+                            dataofAssign.push(node.data.text)
+                            console.log("data is: " + node.data.text);
+                            DA++;
+                            for (let i = 0; i < DA; i++) {
+                                console.log(dataofAssign[i]);
+                            }
+                        }
+                        else if (node.data.category == "Call") {
+                            dataofCall.push(node.data.text)
+                            console.log("data is: " + node.data.text);
+                            DC++;
+                            for (let i = 0; i < DC; i++) {
+                                console.log(dataofCall[i]);
+                            }
+                        }
+                        else if (node.data.category == "Declare") {
+                            dataofDeclare.push(node.data.text)
+                            console.log("data is: " + node.data.text);
+                            DD++;
+                            for (let i = 0; i < DD; i++) {
+                                console.log(dataofDeclare[i]);
+                            }
+                        }
+                        /*dataofall.push(node.text) 
+                        console.log("data is: " + node.text);
+                        DC++;
+                        for (let i = 0; i < DC; i++) {
+                            console.log(dataofall[i]);
+                        }*/
+
+
+                        //const model = myDiagram.model;
+                    })
+
+
+
+
+
+                function groupColor(cat) {
+                    switch (cat) {
+                        case "If": return "rgba(255,0,0,0.05)";
+                        case "For": return "rgba(0,255,0,0.05)";
+                        case "While": return "rgba(0,0,255,0.05)";
+                        default: return "rgba(0,0,0,0.05)";
+                    }
+                }
+
+                /*function eee(item, index) {
+                    console.Log(item)
+                }*/
+
+
+                // define the Group template, required but unseen
+                myDiagram.groupTemplate =
+                    $(go.Group, "Spot",
+                        {
+                            locationSpot: go.Spot.Center,
+                            avoidableMargin: 10,  // extra space on the sides
+                            layout: $(ParallelLayout, { angle: 90, layerSpacing: 24, nodeSpacing: 30 }),
+                            mouseDragEnter: (e, group) => {
+                                var sh = group.findObject("SHAPE");
+                                if (sh) sh.stroke = "lime";
+                            },
+                            mouseDragLeave: (e, group) => {
+                                var sh = group.findObject("SHAPE");
+                                if (sh) sh.stroke = null;
+                            },
+                            mouseDrop: dropOntoNode
+                        },
+                        $(go.Panel, "Auto",
+                            $(go.Shape, "RoundedRectangle",
+                                { fill: "rgba(0,0,0,0.05)", strokeWidth: 0, spot1: go.Spot.TopLeft, spot2: go.Spot.BottomRight },
+                                new go.Binding("fill", "cat", groupColor)),
+                            $(go.Placeholder)
+                        ),
+                        $(go.Shape, "LineH",
+                            {
+                                name: "SHAPE",
+                                alignment: go.Spot.Bottom,
+                                height: 0, stretch: go.GraphObject.Horizontal,
+                                stroke: null, strokeWidth: 8
+                            })
+                    );
+
+                myDiagram.linkTemplate =
+                    $(go.Link,
+                        {
+                            selectable: false,
+                            deletable: false,
+                            routing: go.Link.Orthogonal, corner: 5,
+                            fromEndSegmentLength: 4, toEndSegmentLength: 4,
+                            toShortLength: 2,
+                            // links cannot be deleted
+                            // If a node from the Palette is dragged over this node, its outline will turn green
+                            mouseDragEnter: (e, link) => { if (!isLoopBack(link)) link.isHighlighted = true; },
+                            mouseDragLeave: (e, link) => { link.isHighlighted = false; },
+                            // if a node from the Palette is dropped on a link, the link is replaced by links to and from the new node
+                            mouseDrop: dropOntoLink,
+
+
+                        },
+                        $(go.Shape, { isPanelMain: true, stroke: "transparent", strokeWidth: 8 },
+                            new go.Binding("stroke", "isHighlighted", h => h ? "lime" : "transparent").ofObject()),
+                        $(go.Shape, { isPanelMain: true, stroke: "black", strokeWidth: 1.5 }),
+                        $(go.Shape, { toArrow: "Standard", strokeWidth: 0 }),
+                        $(go.TextBlock, { segmentIndex: 0, segmentFraction: 0.5 },                       // this is a Link label
+                            new go.Binding("text", "text"),
+                            new go.Binding("stroke", "stroke"),
+                            new go.Binding("segmentOffset", "segmentOffset")
+                        )
+
+                        // $(go.TextBlock, { segmentIndex: -2, segmentFraction: 0.75, editable: true },
+                        //   new go.Binding("text").makeTwoWay(),
+                        //   new go.Binding("background", "text", t => t ? "white" : null))
+                    );
+
+                function isLoopBack(link) {
+                    if (!link) return false;
+                    if (link.fromNode.containingGroup !== link.toNode.containingGroup) return false;
+                    var cat = link.fromNode.category;
+                    return (cat === "EndFor" || cat === "EndWhile" || cat === "EndIf");
+                }
+
+                // A node dropped onto a Merge node is spliced into a link coming into that node;
+                // otherwise it is spliced into a link that is coming out of that node.
+                var k = 0;
+                function dropOntoNode(e, oldnode) {
+                    if (oldnode instanceof go.Group) {
+                        var merge = oldnode.layout.mergeNode;
+                        if (merge) {
+                            var it = merge.findLinksOutOf();
+                            while (it.next()) {
+                                var link = it.value;
+                                if (link.fromNode.containingGroup !== link.toNode.containingGroup) {
+                                    dropOntoLink(e, link);
+                                    break;
+                                }
+                            }
+                        }
+                    } else if (oldnode instanceof go.Node) {
+                        var cat = oldnode.category;
+                        if (cat === "Merge" || cat === "End" || cat === "EndFor" || cat === "EndWhile" || cat === "EndIf") {
+                            var link = oldnode.findLinksInto().first();
+                            if (link) dropOntoLink(e, link);
+                        } else {
+                            var link = oldnode.findLinksOutOf().first();
+                            if (link) dropOntoLink(e, link);
+                        }
+                    }
+                }
+
+                // Splice a node into a link.
+                // If the new node is of category "For" or "While" or "If", create a Group and splice it in,
+                // and add the new node to that group, and add any other desired nodes and links to that group.
+                var k = 0;
+
+                function dropOntoLink(e, oldlink) {
+
+                    if (!(oldlink instanceof go.Link)) return;
+                    var diagram = e.diagram;
+                    var newnode = diagram.selection.first();
+
+
+                    if (!(newnode instanceof go.Node)) return;
+                    if (!newnode.isTopLevel) return;
+
+                    if (isLoopBack(oldlink)) {
+                        // can't add nodes into links going back to the "For" node4
+
+                        diagram.remove(newnode);
+
+                        return;
+
+                    }
+
+                    var fromnode = oldlink.fromNode;
+                    var tonode = oldlink.toNode;
+                    /*if (newnode.category === "") {  // add simple step into chain of actions
+                        newnode.containingGroup = oldlink.containingGroup;
+                        // Reconnect the existing link to the new node
+                        oldlink.toNode = newnode;
+                        // Then add links from the new node to the old node
+                        if (newnode.category === "If") {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        } else {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        }
+                        newnode.data.key = k;
+                        k += 1;
+                        console.log(newnode.data);
+                    }*/
+                    if (newnode.category === "Input") {  // add simple step into chain of actions
+                        newnode.containingGroup = oldlink.containingGroup;
+                        // Reconnect the existing link to the new node
+
+                        oldlink.toNode = newnode;
+                        // Then add links from the new node to the old node
+
+                        if (newnode.category === "If") {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        }
+                        else {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        }
+                        /*newnode.data.key = k;
+                        k += 1;
+                        console.log(newnode.data);
+                        /*newnode.data.key = k;
+                        k += 1;
+                        console.log(newnode.data);*/
+                    }
+                    if (newnode.category === "Output") {  // add simple step into chain of actions
+                        newnode.containingGroup = oldlink.containingGroup;
+                        // Reconnect the existing link to the new node
+                        oldlink.toNode = newnode;
+                        // Then add links from the new node to the old node
+                        if (newnode.category === "If") {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        }
+                        else {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        }
+                        /*newnode.data.key = k;
+                        k += 1;
+                        console.log(newnode.data);*/
+                    }
+                    if (newnode.category === "Assign") {  // add simple step into chain of actions
+                        newnode.containingGroup = oldlink.containingGroup;
+                        // Reconnect the existing link to the new node
+                        oldlink.toNode = newnode;
+                        // Then add links from the new node to the old node
+                        if (newnode.category === "If") {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        } else {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        }
+                        /*newnode.data.key = k;
+                        k += 1;
+                        console.log(newnode.data);*/
+                    }
+                    if (newnode.category === "Declare") {  // add simple step into chain of actions
+                        newnode.containingGroup = oldlink.containingGroup;
+                        // Reconnect the existing link to the new node
+                        oldlink.toNode = newnode;
+                        // Then add links from the new node to the old node
+                        if (newnode.category === "If") {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        } else {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        }
+                        /*newnode.data.key = k;
+                        k += 1;
+                        console.log(newnode.data);*/
+                    }
+                    if (newnode.category === "Do") {  // add simple step into chain of actions
+                        newnode.containingGroup = oldlink.containingGroup;
+                        // Reconnect the existing link to the new node
+                        oldlink.toNode = newnode;
+                        // Then add links from the new node to the old node
+                        if (newnode.category === "If") {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        } else {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        }
+                        /*newnode.data.key = k;
+                        k += 1;
+                        console.log(newnode.data);*/
+                    }
+                    if (newnode.category === "Call") {  // add simple step into chain of actions
+                        newnode.containingGroup = oldlink.containingGroup;
+                        // Reconnect the existing link to the new node
+                        oldlink.toNode = newnode;
+                        // Then add links from the new node to the old node
+                        if (newnode.category === "If") {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                            //diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        } else {
+                            diagram.model.addLinkData({ from: newnode.key, to: tonode.key });
+                        }
+                        newnode.data.key = k;
+                        k += 1;
+                        console.log(newnode.data);
+                    }
+
+                    else if (newnode.category === "For" || newnode.category === "While"/* || newnode.category === "Do"*/) {  // add loop group
+                        // add group for loop
+                        var groupdata = { isGroup: true, cat: newnode.category };
+                        diagram.model.addNodeData(groupdata);
+                        var group = diagram.findNodeForData(groupdata);
+                        group.containingGroup = oldlink.containingGroup;
+                        diagram.select(group);
+
+                        newnode.containingGroup = group;
+
+                        var enddata = { category: "End" + newnode.category };
+                        diagram.model.addNodeData(enddata);
+                        var endnode = diagram.findNodeForData(enddata);
+                        endnode.containingGroup = group;
+                        endnode.location = e.documentPoint;
+
+                        diagram.model.addLinkData({ from: newnode.key, to: endnode.key });
+                        diagram.model.addLinkData({ from: endnode.key, to: newnode.key, text: "next", stroke: "green", segmentOffset: new go.Point(20, 10) });
+
+                        // Reconnect the existing link to the new node
+                        oldlink.toNode = newnode;
+                        // Then add a link from the end node to the old node
+                        diagram.model.addLinkData({ from: endnode.key, to: tonode.key });
+                        /*newnode.data.key = k;
+                        k += 1;
+                        console.log(newnode.data);*/
+                    } else if (newnode.category === "If") {  // add Conditional group
+                        // add group for conditional
+                        var groupdata = { isGroup: true, cat: newnode.category };
+                        diagram.model.addNodeData(groupdata);
+                        var group = diagram.findNodeForData(groupdata);
+                        group.containingGroup = oldlink.containingGroup;
+                        diagram.select(group);
+
+                        newnode.containingGroup = group;
+
+                        var enddata = { category: "EndIf" };
+                        diagram.model.addNodeData(enddata);
+                        var endnode = diagram.findNodeForData(enddata);
+                        endnode.containingGroup = group;
+                        endnode.location = e.documentPoint;
+
+                        var truedata = { from: newnode.key, to: endnode.key, text: "true", stroke: "green", segmentOffset: new go.Point(0, 10) };
+                        diagram.model.addLinkData(truedata);
+                        var truelink = diagram.findLinkForData(truedata);
+                        var falsedata = { from: newnode.key, to: endnode.key, text: "false", stroke: "red", segmentOffset: new go.Point(0, -10) };
+                        diagram.model.addLinkData(falsedata);
+                        var falselink = diagram.findLinkForData(falsedata);
+
+                        // Reconnect the existing link to the new node
+                        oldlink.toNode = newnode;
+                        // Then add a link from the new node to the old node
+                        diagram.model.addLinkData({ from: endnode.key, to: tonode.key });
+                        /*newnode.data.key = k;
+                        k += 1;
+                        console.log(newnode.data);*/
+                    } else if (newnode.category == "Do") {  // add multi-way Switch group
+                        // add group for loop
+                        var groupdata = { isGroup: true, cat: newnode.category };
+                        diagram.model.addNodeData(groupdata);
+                        var group = diagram.findNodeForData(groupdata);
+                        group.containingGroup = oldlink.containingGroup;
+                        diagram.select(group);
+
+                        newnode.containingGroup = group;
+
+                        var enddata = { category: "Merge" };
+                        diagram.model.addNodeData(enddata);
+                        var endnode = diagram.findNodeForData(enddata);
+                        endnode.containingGroup = group;
+                        endnode.location = e.documentPoint;
+
+                        var yesdata = { text: "yes,\ndo it" };
+                        diagram.model.addNodeData(yesdata);
+                        var yesnode = diagram.findNodeForData(yesdata);
+                        yesnode.containingGroup = group;
+                        yesnode.location = e.documentPoint;
+                        diagram.model.addLinkData({ from: newnode.key, to: yesnode.key, text: "yes" });
+                        diagram.model.addLinkData({ from: yesnode.key, to: endnode.key });
+
+                        var nodata = { text: "no,\ndon't" };
+                        diagram.model.addNodeData(nodata);
+                        var nonode = diagram.findNodeForData(nodata);
+                        nonode.containingGroup = group;
+                        nonode.location = e.documentPoint;
+                        diagram.model.addLinkData({ from: newnode.key, to: nonode.key, text: "no" });
+                        diagram.model.addLinkData({ from: nonode.key, to: endnode.key });
+
+                        var maybedata = { text: "??" };
+                        diagram.model.addNodeData(maybedata);
+                        var maybenode = diagram.findNodeForData(maybedata);
+                        maybenode.containingGroup = group;
+                        maybenode.location = e.documentPoint;
+                        diagram.model.addLinkData({ from: newnode.key, to: maybenode.key, text: "maybe" });
+                        diagram.model.addLinkData({ from: maybenode.key, to: endnode.key });
+
+                        // Reconnect the existing link to the new node
+                        oldlink.toNode = newnode;
+                        // Then add a link from the end node to the old node
+                        diagram.model.addLinkData({ from: endnode.key, to: tonode.key });
+                    }
+                    diagram.layoutDiagram(true);
+
+                }
+                function changeNodeKey(e) {
+                    var diagram = e.diagram;
+                    var newnode = diagram.selection.first();
+                    newnode.data.key = k;
+                    k += 1;
+                    console.log(newnode.data);
+                }
+
+                function deletingNode(node) {  // excise node from the chain that it is in
+                    if (!(node instanceof go.Node)) return;
+                    if (node instanceof go.Group) {
+                        var externals = node.findExternalLinksConnected();
+                        var next = null;
+                        externals.each(link => {
+                            if (link.fromNode.isMemberOf(node)) next = link.toNode;
+                        });
+                        if (next) {
+                            externals.each(link => {
+                                if (link.toNode.isMemberOf(node)) link.toNode = next;
+                            });
+                        }
+                    } else if (node.category === "") {
+                        var next = node.findNodesOutOf().first();
+                        if (next) {
+                            new go.List(node.findLinksInto()).each(link => link.toNode = next);
+                        }
+                    }
+                }
+
+                // initialize Palette
+                myPalette =
+                    $(go.Palette, "myPaletteDiv",
+                        {
+                            maxSelectionCount: 1,
+                            nodeTemplateMap: myDiagram.nodeTemplateMap,
+                            model: new go.GraphLinksModel([
+                                { text: "Input", category: "Input", color: "#c0e0ff", border: "#6c89a7" },
+                                { text: "Output", category: "Output", color: "#d0ffd0", border: "#73a373" },
+                                { text: "Declare", category: "Declare", color: "#ffffd0", border: "#a0a070" },
+                                { text: "Assign", category: "Assign", color: "#ffffd0", border: "#a0a070" },
+                                { text: "If", category: "If", color: "#ffd0d0", border: "#a77b7b" },
+                                { text: "While", category: "While", color: "#ffe0a0", border: "#a08141" },
+                                { text: "For", category: "For", color: "#ffe0a0", border: "#a08141" },
+                                { text: "Do", category: "Do", color: "#ffe0a0", border: "#a08141" }
+                            ])
+                        });
+
+                // initialize Overview
+                //myDiagram = 
+
+                myOverview =
+                    $(go.Overview, "myOverviewDiv",
+                        {
+                            observed: myDiagram,
+                            contentAlignment: go.Spot.Center
+                        });
+
+                load();
+            }
+
+
+
+
+            // Show the diagram's model in JSON format
+
+
+            function download() {
+                var content = document.getElementById("mySavedModel").value;
+                let text;
+                var person = prompt("Please enter file name:", "undefind.txt");
+                if (person == null || person == "") {
+                    text = "User cancelled the prompt.";
+                }
+                content = JSON.parse(content);
+                var json = JSON.stringify(content);
+
+                var a = document.createElement("a");
+                var file = new Blob([json]);
+                a.href = window.URL.createObjectURL(file);
+                a.download = person;
+                a.click();
+            }
+
+
+
+            function save(gcs) {
+                document.getElementById("mySavedModel").value = myDiagram.model.toJson();
+                var modelString = myDiagram.model.toJson();
+                var fileDia = document.getElementById("mySavedModel").value;
+                myDiagram.isModified = false;
+                localStorage.setItem("myDiagram", modelString);
+
+                //console.log(gls);
+                download();
+            }
+            function load() {
+
+                myDiagram.model = go.Model.fromJson(document.getElementById("mySavedModel").value);
+
+            }
+            function open() {
+
+            }
+            var fileSelector;
+            var fileList;
+            /*function rf() {
+                const fileInput = document.getElementById('fileInput');
+                const file = fileInput.files[0];
+
+                if (file) {
+                    const reader = new FileReader();
+
+                    reader.onload = function (e) {
+                        const fileContent = e.target.result;
+                        document.getElementById('fileContent').textContent = fileContent;
+                    };
+
+                    reader.readAsText(file);
+                }
+
+            }*/
+            function readFile() {
+                const fileInput = document.getElementById('fileInput');
+                const file = fileInput.files[0];
+
+                if (file) {
+                    const reader = new FileReader();
+
+                    reader.onload = function (e) {
+                        let fileContent = e.target.result;
+                        console.log(typeof fileContent)
+
+
+                        /*for (let i =0; i<=fileContent; i++) {
+                            if (fileContent[i] == "\") 
+                        }*/
+                        document.getElementById('mySavedModel').value = fileContent;
+                        myDiagram.model = go.Model.fromJson(document.getElementById("mySavedModel").value);
+                    };
+
+                    reader.readAsText(file);
+
+                }
+
+            }
+
+            function deleteSelection() {
+                myDiagram.commandHandler.deleteSelection();
+
+                /*myDiagram.keyDown("Del");
+                myDiagram.keyUp("Del");*/
+
+            }
+
+
+
+            function containsNumbers(str) {
+                return /\d/.test(str);
+            }
+
+
+            var fileSelector = document.getElementById('file-selector');
+
+            function runinlist() {
+
+            }
+            function run() {
+                /*function wdw(a) {
+                    
+                    console.log(a);
+                }
+                function test(a) {
+                    wdw(a+1);
+                    console.log(a);
+                }*/
+                var varList;
+                varList = [];
+
+                var dataObject;
+
+                dataObject = { name: "", data: "", type: "" }
+                var TimeLine = [];
+                //console.log(myDiagram.model.linkDataArray);
+                //console.log(myDiagram.model.nodeDataArray);
+                var listNode = myDiagram.model.nodeDataArray;
+                var listLink = myDiagram.model.linkDataArray;
+                console.log(listNode);
+                console.log(listLink);
+                var z = listNode.length;
+                var f = listLink.length;
+                var a = 0;
+                var textList;
+                var text;
+
+                var u = myDiagram.model.linkDataArray.find(item => item.from === 1000);
+                TimeLine.push(myDiagram.model.nodeDataArray.find(item => item.key === 1000));
+
+                console.log(myDiagram.model.nodeDataArray.find(item => item.key === 1000));
+
+                function assign(b, mark, j) {
+                    /*if (containsNumbers(b)) {
+                        b = Number(b);
+                        if (mark == "+") {
+                            varList[j].data += b;
+                        }
+                        else if (mark == "-") {
+                            varList[j].data -= b;
+                        }
+                        else if (mark == "*") {
+                            varList[j].data *= b;
+                        }
+                        else if (mark == "/") {
+                            varList[j].data /= b;
+                        }
+                    }
+                    else if (containsNumbers(b) != false) {
+                        b = varList.find(x => x.name === b).data;
+                        console.log(b.data);
+                        if (mark == "+") {
+                            varList[j].data += b;
+                        }
+                        else if (mark == "-") {
+                            varList[j].data -= b;
+                        }
+                        else if (mark == "*") {
+                            varList[j].data *= b;
+                        }
+                        else if (mark == "/") {
+                            varList[j].data /= b;
+                        }
+                    }*/
+                    varList[j].data = eval(b)
+                    console.log(varList[j]);
+
+
+                }
+                var isGroupKey = [];
+                for (let i = 0; i < z; i++) {
+
+
+
+                    if (u != undefined/*,myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)]*/) {
+                        console.log(myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)]);
+                        if (myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)].group != undefined) {
+                            if (myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)].category == "If") {
+                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)].group && item["cat"] == "If"; })[0].group);
+                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)].group && item["cat"] == "If"; })[0].group == undefined) {
+                                    TimeLine.push(myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)]);
+                                }
+
+                            }
+                            else if (myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)].category == "While") {
+                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)].group && item["cat"] == "While"; })[0].group);
+                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)].group && item["cat"] == "While"; })[0].group == undefined) {
+                                    if (u.text != "true") {
+                                        TimeLine.push(myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)]);
+                                    }
+
+                                }
+
+                            }
+                            else {
+                                console.log("sad");
+                            }
+                        }
+                        else {
+                            TimeLine.push(myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)]);
+                        }
+
+
+
+                        //console.log(myDiagram.model.nodeDataArray[myDiagram.model.nodeDataArray.findIndex(item => item.key === u.to)]);
+                    }
+                    if (u != undefined) {
+                        u = myDiagram.model.linkDataArray.find(item => item.from === u.to);
+                        console.log(u);
+                    }
+
+                    //console.log(TimeLine);
+                }
+                console.log(TimeLine);
+                /*console.log(TimeLine[1]);
+                console.log(TimeLine[2]);
+                console.log(TimeLine[3]);*/
+
+                /*console.log(z);
+                console.log(f);*/
+                function removeDuplicates(arr) {
+                    return arr.filter((item,
+                        index) => arr.indexOf(item) === index);
+                }
+                var gt;
+                var p;
+                var vlc = 0;
+                var dte = 0;
+                var iuyh = 0;
+                var iflist;
+                var iftext;
+                var ifline = [];
+                var iflinf = [];
+                var nodeif;
+                var nodfif;
+                var oe;
+                var of;
+                var endif;
+                var endwhile;
+                var ifgroup;
+                var whilegroup;
+                var whilelog;
+                var nodewhile;
+                var whilelist;
+                var iiw = [0];
+                var b = 0;
+                var EVN = "Error Variable Not Declare";
+                var EIV = "Error Invalid Value"
+                var Cwe = 0;
+                console.log(TimeLine);
+                document.getElementById("textOut").value = "";
+                var runinlist = function (a, ifline) {
+                    console.log(ifline[a])
+                    let nh = ifline[a].length;
+                    console.log(nh);
+
+                    if (ifline[a].length == 0) {
+                        console.log("lp")
+                        return;
+                    }
+                    for (let i = 0; i < nh; i++) {
+                        console.log(a)
+                        console.log(i)
+                        console.log(ifline[a]);
+                        if (ifline[a][i].category == "Declare") {
+                            dataObject.name = ifline[a][i].text;
+                            console.log(dataObject);
+                            varList.push(dataObject);
+                            varList[vlc].data = 0;
+                            //varList.add(list[i].text);
+                            console.log(varList);
+
+                            p = varList.length;
+
+                            console.log(varList[vlc].name);
+                            vlc += 1;
+                            dataObject = { name: "", data: "", type: "" };
+                        }
+                        else if (ifline[a][i].category == "Assign") {
+                            text = ifline[a][i].text;
+
+                            textList = ifline[a][i].text.split('=');
+                            text = "";
+                            for (let i = 0; i < textList.length; i++) {
+                                text += textList[i] + " ";
+                                if (iuyh == 0) {
+                                    text += "= ";
+                                    iuyh += 1;
+                                }
+                            }
+
+                            console.log(textList.length);
+                            console.log(text);
+                            textList = text.split(' ');
+                            console.log(textList);
+                            gt = textList.length;
+                            var marklist = ["+", "-", "*", "/"]
+                            for (let j = 0; j < p; j++) {
+                                //console.log(varList[0].name);
+
+                                if (textList[0] == varList[j].name/*, varList[j].name != textList[2]*/) {
+                                    console.log(text.indexOf("="));
+                                    var koo = text.indexOf("=")
+                                    text = text.substring(koo += 1, text.length);
+                                    console.log(text);
+                                    for (let i = 0; i < p; i++) {
+                                        if (text.includes(varList[i].name)) {
+                                            console.log(varList[i].data);
+                                            //text.replace(varList[j].name, varList[j].data);
+                                            text = text.replaceAll(varList[i].name, varList[i].data);
+                                            console.log(text);
+                                        }
+
+                                    }
+                                    function check() {
+                                        for (let i = 0; i < p; i++) {
+                                            for (let y = 0; y < ty.length; y++) {
+                                                console.log(ty);
+                                                console.log(ty[y]);
+                                                if (ty[y] == ' null') {
+                                                    alert(EIV);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (text.includes("+")) {
+                                        var ty = text.split("+");
+                                        check()
+                                    }
+                                    else if (text.includes("-")) {
+                                        var ty = text.split("-");
+                                        check()
+                                    }
+                                    else if (text.includes("**")) {
+                                        var ty = text.split("**");
+                                        check()
+                                    }
+                                    else if (text.includes("/")) {
+                                        var ty = text.split("/");
+                                        check()
+                                    }
+                                    else if (text.includes("*")) {
+                                        var ty = text.split("*");
+                                        check()
+                                    }
+                                    else if (text.includes("%")) {
+                                        var ty = text.split("%");
+                                        check()
+                                    }
+
+
+                                    
+                                    varList[j].data = eval(text);
+                                    console.log(varList[j].data);
+
+                                    //console.log(varList[j].data);
+
+                                }
+
+                            }
+                            //dataObject.name = "";
+                            iuyh = 0;
+
+                        }
+
+                        else if (ifline[a][i].category == "Output") {
+                            console.log("opd");
+                            let outarray = ifline[a][i].text.split("");
+                            let aol = ifline[a][i].text;
+                            for (let j = 0; j < p; j++) {
+                                if (ifline[a][i].text == varList[j].name) {
+
+                                    console.log(varList[j].data);
+                                    if (dte == 0) {
+                                        document.getElementById("textOut").value = varList[j].data + "\r\n";
+                                        dte += 1;
+                                    }
+                                    else {
+                                        document.getElementById("textOut").value += varList[j].data + "\r\n";
+                                    }
+                                }
+                            }
+                            if (outarray[0] == '"') {
+                                if (outarray[outarray.length - 1] == '"') {
+                                    document.getElementById("textOut").value += aol.slice(1, outarray.length - 1) + "\r\n";
+                                }
+                                console.log(ifline[a][i].text);
+                            }
+                            else if (outarray[0] == "'") {
+                                if (outarray[outarray.length - 1] == "'") {
+                                    document.getElementById("textOut").value += aol.slice(1, outarray.length - 1) + "\r\n";
+                                }
+                                console.log(ifline[a][i].text);
+                            }
+                        }
+                        else if (ifline[a][i].category == "Input") {
+                            for (let j = 0; j < p; j++) {
+                                if (ifline[a][i].text == varList[j].name) {
+                                    varList[j].data = prompt("จงใส่ค่า");
+                                    console.log(varList[j].data);
+                                }
+                            }
+                        }
+                        else if (ifline[a][i].color == "#ffd0d0") {
+
+                            iftext = ifline[a][i].text;
+                            oe = myDiagram.model.linkDataArray.find(item => item.from === ifline[a][i].key);
+                            of = myDiagram.model.linkDataArray.filter(function (item) { return item["from"] == ifline[a][i].key && item["text"] == "false"; })[0]
+                            endif = myDiagram.model.nodeDataArray.find(item => item.from === ifline[a][i].group, ted => ({ category }) => category === "endif");
+                            console.log("dw");
+                            console.log(oe);
+
+                            ifgroup = ifline[a][i].group;
+
+                            let lvar;
+                            let rvar;
+                            ifline.push([]);
+
+                            if (iftext.includes("<")) {
+                                iflist = iftext.split("<");
+                                console.log(iflist);
+                                nodeif = ifline[a][i];
+                                console.log(nodeif);
+
+                                for (let i = 0; i < p; i++) {
+                                    if (iflist[0] == varList[i].name) {
+                                        console.log(iflist);
+                                        lvar = varList[i].data;
+                                        rvar = parseInt(iflist[1]);
+                                        for (let j = 0; j < p; j++) {
+                                            if (iflist[1] == varList[j].name) {
+                                                rvar = varList[j].data;
+                                                console.log(iflist);
+                                            }
+
+                                        }
+                                        console.log(lvar + " " + rvar);
+                                    }
+
+                                }
+                                if (lvar < rvar) {
+                                    for (let j = 0; j != 1;) {
+                                        oe = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+                                        console.log(oe)
+                                        nodeif = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                        console.log(nodeif);
+                                        if (nodeif.group == ifline[a][i].group) {
+                                            ifline[a + 1].push(nodeif);
+                                            console.log(ifline[a + 1]);
+                                            console.log(nodeif);
+
+                                        }
+                                        else if (nodeif.category == "If") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                        }
+                                        else if (nodeif.category == "While") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                        }
+                                        else if (nodeif.group == undefined) {
+                                            break;
+                                            console.log("dwl")
+                                        }
+                                        else if (nodeif.category == "EndIf", nodeif.group == ifline[a][i].group) {
+                                            break;
+                                            console.log("dd")
+                                        }
+
+                                    }
+                                    for (let i = 1; i < ifline.length; i++) {
+                                        ifline[i - 1] = removeDuplicates(ifline[i - 1]);
+                                    }
+                                    runinlist(a + 1, ifline);
+                                }
+                                else if (lvar >= rvar) {
+                                    for (let j = 0; j != 1;) {
+
+
+
+                                        console.log(of);
+                                        nodeif = myDiagram.model.nodeDataArray.find(item => item.key === of.to);
+                                        of = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+
+                                        console.log(nodeif);
+
+                                        if (nodeif.group == ifline[a][i].group) {
+                                            ifline[a + 1].push(nodeif);
+                                            console.log(ifline);
+
+
+                                        }
+                                        else if (nodeif.category == "If") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                        }
+                                        else if (nodeif.category == "While") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                        }
+                                        else if (nodeif.group == undefined) {
+                                            break;
+                                            console.log("dwl")
+                                        }
+                                        else if (nodeif.category == "EndIf", nodeif.group == ifline[a][i].group) {
+                                            break;
+                                            console.log("dd")
+                                        }
+
+                                        //i +=1;
+                                    }
+                                    for (let i = 1; i < ifline.length; i++) {
+                                        ifline[i - 1] = removeDuplicates(ifline[i - 1]);
+                                    }
+
+                                    runinlist(a + 1, ifline);
+                                }
+
+
+
+                                console.log(ifline);
+                                //console.log(ifline);
+
+                            }
+                            if (iftext.includes(">")) {
+                                iflist = iftext.split(">");
+                                console.log(iflist);
+                                nodeif = ifline[a][i];
+                                console.log(nodeif);
+
+                                for (let i = 0; i < p; i++) {
+                                    if (iflist[0] == varList[i].name) {
+                                        console.log(iflist);
+                                        lvar = varList[i].data;
+                                        rvar = parseInt(iflist[1]);
+                                        for (let j = 0; j < p; j++) {
+                                            if (iflist[1] == varList[j].name) {
+                                                rvar = varList[j].data;
+                                                console.log(iflist);
+                                            }
+
+                                        }
+                                        console.log(lvar + " " + rvar);
+                                    }
+
+                                }
+                                if (lvar > rvar) {
+                                    for (let j = 0; j != 1;) {
+                                        oe = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+                                        console.log(oe)
+                                        nodeif = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                        console.log(nodeif);
+                                        if (nodeif.group == ifline[a][i].group) {
+                                            ifline[a + 1].push(nodeif);
+                                            console.log(ifline[a + 1]);
+                                            console.log(nodeif);
+
+                                        }
+                                        else if (nodeif.category == "If") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                        }
+                                        else if (nodeif.category == "While") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                        }
+                                        else if (nodeif.group == undefined) {
+                                            break;
+                                            console.log("dwl")
+                                        }
+                                        else if (nodeif.category == "EndIf", nodeif.group == ifline[a][i].group) {
+                                            break;
+                                            console.log("dd")
+                                        }
+
+                                    }
+                                    for (let i = 1; i < ifline.length; i++) {
+                                        ifline[i - 1] = removeDuplicates(ifline[i - 1]);
+                                    }
+                                    console.log(ifline);
+                                    runinlist(a + 1, ifline);
+                                }
+                                else if (lvar <= rvar) {
+                                    for (let j = 0; j != 1;) {
+
+
+
+                                        console.log(of);
+                                        nodeif = myDiagram.model.nodeDataArray.find(item => item.key === of.to);
+                                        of = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+
+                                        console.log(nodeif);
+
+                                        if (nodeif.group == ifline[a][i].group) {
+                                            ifline[a + 1].push(nodeif);
+                                            console.log(ifline);
+
+
+                                        }
+                                        else if (nodeif.category == "If") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                        }
+                                        else if (nodeif.category == "While") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                        }
+                                        else if (nodeif.group == undefined) {
+                                            break;
+                                            console.log("dwl")
+                                        }
+                                        else if (nodeif.category == "EndIf", nodeif.group == ifline[a][i].group) {
+                                            break;
+                                            console.log("dd")
+                                        }
+
+                                        //i +=1;
+                                    }
+                                    for (let i = 1; i < ifline.length; i++) {
+                                        ifline[i - 1] = removeDuplicates(ifline[i - 1]);
+                                    }
+                                    runinlist(a + 1, ifline);
+                                }
+
+
+
+                                console.log(ifline);
+                                //console.log(ifline);
+
+                            }
+                            if (iftext.includes("==")) {
+                                iflist = iftext.split("==");
+                                console.log(iflist);
+                                nodeif = ifline[a][i];
+                                console.log(nodeif);
+
+                                for (let i = 0; i < p; i++) {
+                                    if (iflist[0] == varList[i].name) {
+                                        console.log(iflist);
+                                        lvar = varList[i].data;
+                                        rvar = parseInt(iflist[1]);
+                                        for (let j = 0; j < p; j++) {
+                                            if (iflist[1] == varList[j].name) {
+                                                rvar = varList[j].data;
+                                                console.log(iflist);
+                                            }
+
+                                        }
+                                        console.log(lvar + " " + rvar);
+                                    }
+
+                                }
+                                if (lvar == rvar) {
+                                    for (let j = 0; j != 1;) {
+                                        oe = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+                                        console.log(oe)
+                                        nodeif = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                        console.log(nodeif);
+                                        if (nodeif.group == ifline[a][i].group) {
+                                            ifline[a + 1].push(nodeif);
+                                            console.log(ifline[a + 1]);
+                                            console.log(nodeif);
+
+                                        }
+                                        else if (nodeif.category == "If") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                        }
+                                        else if (nodeif.category == "While") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                        }
+                                        else if (nodeif.group == undefined) {
+                                            break;
+                                            console.log("dwl")
+                                        }
+                                        else if (nodeif.category == "EndIf", nodeif.group == ifline[a][i].group) {
+                                            break;
+                                            console.log("dd")
+                                        }
+
+                                    }
+                                    for (let i = 1; i < ifline.length; i++) {
+                                        ifline[i - 1] = removeDuplicates(ifline[i - 1]);
+                                    }
+                                    runinlist(a + 1, ifline);
+                                }
+                                else if (lvar != rvar) {
+                                    for (let j = 0; j != 1;) {
+
+
+
+                                        console.log(of);
+                                        nodeif = myDiagram.model.nodeDataArray.find(item => item.key === of.to);
+                                        of = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+
+                                        console.log(nodeif);
+
+                                        if (nodeif.group == ifline[a][i].group) {
+                                            ifline[a + 1].push(nodeif);
+                                            console.log(ifline);
+
+
+                                        }
+                                        else if (nodeif.category == "If") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                        }
+                                        else if (nodeif.category == "While") {
+                                            if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == ifline[a][i].group) {
+                                                ifline[a + 1].push(nodeif);
+                                            }
+                                            console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                        }
+                                        else if (nodeif.group == undefined) {
+                                            break;
+                                            console.log("dwl")
+                                        }
+                                        else if (nodeif.category == "EndIf", nodeif.group == ifline[a][i].group) {
+                                            break;
+                                            console.log("dd")
+                                        }
+
+                                        //i +=1;
+                                    }
+                                    for (let i = 1; i < ifline.length; i++) {
+                                        ifline[i - 1] = removeDuplicates(ifline[i - 1]);
+                                    }
+                                    runinlist(a + 1, ifline);
+                                }
+
+
+
+                                console.log(ifline);
+                                //console.log(ifline);
+
+                            }
+
+
+                            for (let j = 0; j < p; j++) {
+
+                            }
+                            ifline[a + 1] = "";
+                        }
+                        
+                        else if (ifline[a][i].category == "EndIf") {
+                            console.log("fefr")
+                            return;
+                        }
+                        else if (ifline[a][i].category == undefined) {
+                            console.log("fefr")
+                            return;
+                        }
+
+
+                    }
+                    
+                }
+                var runinwhile = function (a,whileline) {
+                    console.log(whileline);
+                    for (let i = 0; i < whileline[a].length; i++) {
+                        if (whileline[a][i].category == "Declare") {
+                            dataObject.name = whileline[a][i].text;
+                            console.log(dataObject);
+                            varList.push(dataObject);
+                            varList[vlc].data = 0;
+                            //varList.add(list[i].text);
+                            console.log(varList);
+
+                            p = varList.length;
+
+                            console.log(varList[vlc].name);
+                            vlc += 1;
+                            dataObject = { name: "", data: "", type: "" };
+                        }
+                        else if (whileline[a][i].category == "Assign") {
+                            text = whileline[a][i].text;
+
+                            textList = whileline[a][i].text.split('=');
+                            text = "";
+                            for (let i = 0; i < textList.length; i++) {
+                                text += textList[i] + " ";
+                                if (iuyh == 0) {
+                                    text += "= ";
+                                    iuyh += 1;
+                                }
+                            }
+
+                            console.log(textList.length);
+                            console.log(text);
+                            textList = text.split(' ');
+                            console.log(textList);
+                            gt = textList.length;
+                            var marklist = ["+", "-", "*", "/"]
+                            for (let j = 0; j < p; j++) {
+                                //console.log(varList[0].name);
+
+                                if (textList[0] == varList[j].name/*, varList[j].name != textList[2]*/) {
+                                    console.log(text.indexOf("="));
+                                    var koo = text.indexOf("=")
+                                    text = text.substring(koo += 1, text.length);
+                                    console.log(text);
+                                    for (let i = 0; i < p; i++) {
+                                        if (text.includes(varList[i].name)) {
+                                            console.log(varList[i].data);
+                                            //text.replace(varList[j].name, varList[j].data);
+                                            text = text.replaceAll(varList[i].name, varList[i].data);
+                                            console.log(text);
+                                        }
+
+                                    }
+                                    function check() {
+                                        for (let i = 0; i < p; i++) {
+                                            for (let y = 0; y < ty.length; y++) {
+                                                console.log(ty);
+                                                console.log(ty[y]);
+                                                if (ty[y] == ' null') {
+                                                    alert(EIV);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (text.includes("+")) {
+                                        var ty = text.split("+");
+                                        check()
+                                    }
+                                    else if (text.includes("-")) {
+                                        var ty = text.split("-");
+                                        check()
+                                    }
+                                    else if (text.includes("**")) {
+                                        var ty = text.split("**");
+                                        check()
+                                    }
+                                    else if (text.includes("/")) {
+                                        var ty = text.split("/");
+                                        check()
+                                    }
+                                    else if (text.includes("*")) {
+                                        var ty = text.split("*");
+                                        check()
+                                    }
+                                    else if (text.includes("%")) {
+                                        var ty = text.split("%");
+                                        check()
+                                    }
+
+
+                                    
+                                    varList[j].data = eval(text);
+                                    console.log(varList[j].data);
+
+                                    //console.log(varList[j].data);
+
+                                }
+
+                            }
+                            //dataObject.name = "";
+                            iuyh = 0;
+
+                        }
+
+                        else if (whileline[a][i].category == "Output") {
+                            console.log("opd");
+                            let outarray = whileline[a][i].text.split("");
+                            let aol = whileline[a][i].text;
+                            for (let j = 0; j < p; j++) {
+                                if (whileline[a][i].text == varList[j].name) {
+
+                                    console.log(varList[j].data);
+                                    if (dte == 0) {
+                                        document.getElementById("textOut").value = varList[j].data + "\r\n";
+                                        dte += 1;
+                                    }
+                                    else {
+                                        document.getElementById("textOut").value += varList[j].data + "\r\n";
+                                    }
+                                }
+                            }
+                            if (outarray[0] == '"') {
+                                if (outarray[outarray.length - 1] == '"') {
+                                    document.getElementById("textOut").value += aol.slice(1, outarray.length - 1) + "\r\n";
+                                }
+                                console.log(whileline[a][i].text);
+                            }
+                            else if (outarray[0] == "'") {
+                                if (outarray[outarray.length - 1] == "'") {
+                                    document.getElementById("textOut").value += aol.slice(1, outarray.length - 1) + "\r\n";
+                                }
+                                console.log(whileline[a][i].text);
+                            }
+                        }
+                        else if (whileline[a][i].category == "Input") {
+                            for (let j = 0; j < p; j++) {
+                                if (whileline[a][i].text == varList[j].name) {
+                                    varList[j].data = prompt("จงใส่ค่า");
+                                    console.log(varList[j].data);
+                                }
+                            }
+                        }
+                        else if (whileline[a][i].color == "#ffd0d0") {
+                            whileline[a + 1] = [];
+                            iftext = whileline[a][i].text;
+                            oe = myDiagram.model.linkDataArray.find(item => item.from === whileline[a][i].key);
+                            of = myDiagram.model.linkDataArray.filter(function (item) { return item["from"] == whileline[a][i].key && item["text"] == "false"; })[0]
+                            endif = myDiagram.model.nodeDataArray.find(item => item.from === whileline[a][i].group, ted => ({ category }) => category === "endif");
+                            console.log("dw");
+                            console.log(oe);
+
+                            ifgroup = whileline[a][i].group;
+
+                            let lvar;
+                            let rvar;
+
+
+                            if (iftext.includes("<")) {
+                                iflist = iftext.split("<");
+                                console.log(iflist);
+                                nodeif = whileline[a][i];
+                                console.log(nodeif);
+
+                                for (let i = 0; i < p; i++) {
+                                    if (iflist[0] == varList[i].name) {
+                                        console.log(iflist);
+                                        lvar = varList[i].data;
+                                        rvar = parseInt(iflist[1]);
+                                        for (let j = 0; j < p; j++) {
+                                            if (iflist[1] == varList[j].name) {
+                                                rvar = varList[j].data;
+                                                console.log(iflist);
+                                            }
+
+                                        }
+                                        console.log(lvar + " " + rvar);
+                                    }
+
+                                }
+                                if (lvar < rvar) {
+
+                                    if (nodeif.iiw != true || nodeif.iiw == undefined) {
+                                        //whileline.push([]);
+                                        console.log(":dw")
+                                        for (let j = 0; j != 1;) {
+                                            oe = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+                                            console.log(oe)
+                                            nodeif = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                            console.log(nodeif);
+                                            if (nodeif.group == whileline[a][i].group, nodeif.category != "EndIf") {
+                                                whileline[a + 1].push(nodeif);
+                                                console.log(whileline);
+                                                console.log(nodeif);
+
+                                            }
+                                            else if (nodeif.category == "If") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                            }
+                                            else if (nodeif.category == "While") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                            }
+                                            else if (nodeif.group == undefined) {
+                                                break;
+                                                console.log("dwl")
+                                            }
+                                            else if (nodeif.category == "EndIf", nodeif.group == whileline[a][i].group) {
+                                                break;
+                                                console.log("dd")
+                                            }
+
+                                        }
+                                    }
+
+                                    for (let i = 1; i < whileline.length; i++) {
+                                        whileline[i - 1] = removeDuplicates(whileline[i - 1]);
+                                    }
+                                    //whileline[a][i].iiw = true;
+                                    runinlist(a + 1, whileline);
+                                }
+                                else if (lvar >= rvar) {
+                                    if (nodeif.iiw != true || nodeif.iiw == undefined) {
+                                        //whileline.push([]);
+                                        for (let j = 0; j != 1;) {
+                                            console.log(of);
+                                            nodeif = myDiagram.model.nodeDataArray.find(item => item.key === of.to);
+                                            of = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+
+                                            console.log(nodeif);
+
+                                            if (nodeif.group == whileline[a][i].group, nodeif.category != "EndIf") {
+                                                whileline[a + 1].push(nodeif);
+                                                console.log(ifline);
+
+
+                                            }
+                                            else if (nodeif.category == "If") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                            }
+                                            else if (nodeif.category == "While") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                            }
+                                            else if (nodeif.group == undefined) {
+                                                break;
+                                                console.log("dwl")
+                                            }
+                                            else if (nodeif.category == "EndIf", nodeif.group == whileline[a][i].group) {
+                                                break;
+                                                console.log("dd")
+                                            }
+
+                                            //i +=1;
+                                        }
+                                    }
+
+                                    for (let i = 1; i < whileline.length; i++) {
+                                        whileline[i - 1] = removeDuplicates(whileline[i - 1]);
+                                    }
+                                    //whileline[a][i].iiw = true;
+                                    runinlist(a + 1, whileline);
+                                }
+
+
+
+                                console.log(whileline);
+                                //console.log(ifline);
+
+                            }
+                            if (iftext.includes(">")) {
+                                iflist = iftext.split(">");
+                                console.log(iflist);
+                                nodeif = whileline[a][i];
+                                console.log(nodeif);
+
+                                for (let i = 0; i < p; i++) {
+                                    if (iflist[0] == varList[i].name) {
+                                        console.log(iflist);
+                                        lvar = varList[i].data;
+                                        rvar = parseInt(iflist[1]);
+                                        for (let j = 0; j < p; j++) {
+                                            if (iflist[1] == varList[j].name) {
+                                                rvar = varList[j].data;
+                                                console.log(iflist);
+                                            }
+
+                                        }
+                                        console.log(lvar + " " + rvar);
+                                    }
+
+                                }
+                                if (lvar > rvar) {
+                                    if (nodeif.iiw != true || nodeif.iiw == undefined) {
+                                        //whileline.push([]);
+                                        console.log(":dw")
+                                        for (let j = 0; j != 1;) {
+                                            oe = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+                                            console.log(oe)
+                                            nodeif = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                            console.log(nodeif);
+                                            if (nodeif.group == whileline[a][i].group, nodeif.category != "EndIf") {
+                                                whileline[a + 1].push(nodeif);
+                                                console.log(whileline);
+                                                console.log(nodeif);
+
+                                            }
+                                            else if (nodeif.category == "If") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                            }
+                                            else if (nodeif.category == "While") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                            }
+                                            else if (nodeif.group == undefined) {
+                                                break;
+                                                console.log("dwl")
+                                            }
+                                            else if (nodeif.category == "EndIf", nodeif.group == whileline[a][i].group) {
+                                                break;
+                                                console.log("dd")
+                                            }
+
+
+
+                                        }
+                                    }
+
+                                    for (let i = 1; i < whileline.length; i++) {
+                                        whileline[i - 1] = removeDuplicates(whileline[i - 1]);
+                                    }
+                                    console.log(whileline);
+                                    //whileline[a][i].iiw = true;
+                                    runinlist(a + 1, whileline);
+                                }
+                                else if (lvar <= rvar) {
+                                    if (nodeif.iiw != true || nodeif.iiw == undefined) {
+                                        //whileline.push([]);
+                                        for (let j = 0; j != 1;) {
+                                            console.log(of);
+                                            nodeif = myDiagram.model.nodeDataArray.find(item => item.key === of.to);
+                                            of = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+
+                                            console.log(nodeif);
+
+                                            if (nodeif.group == whileline[a][i].group, nodeif.category != "EndIf") {
+                                                whileline[a + 1].push(nodeif);
+                                                console.log(ifline);
+
+
+                                            }
+                                            else if (nodeif.category == "If") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                            }
+                                            else if (nodeif.category == "While") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                            }
+                                            else if (nodeif.group == undefined) {
+                                                break;
+                                                console.log("dwl")
+                                            }
+                                            else if (nodeif.category == "EndIf", nodeif.group == whileline[a][i].group) {
+                                                break;
+                                                console.log("dd")
+                                            }
+                                            //i +=1;
+                                        }
+                                    }
+                                    for (let i = 1; i < whileline.length; i++) {
+                                        whileline[i - 1] = removeDuplicates(whileline[i - 1]);
+                                    }
+                                    //whileline[a][i].iiw = true;
+                                    runinlist(a + 1, whileline);
+                                }
+
+
+
+                                console.log(whileline);
+                                //console.log(ifline);
+
+                            }
+                            if (iftext.includes("==")) {
+                                iflist = iftext.split("==");
+                                console.log(iflist);
+                                nodeif = whileline[a][i];
+                                console.log(nodeif);
+
+                                for (let i = 0; i < p; i++) {
+                                    if (iflist[0] == varList[i].name) {
+                                        console.log(iflist);
+                                        lvar = varList[i].data;
+                                        rvar = parseInt(iflist[1]);
+                                        for (let j = 0; j < p; j++) {
+                                            if (iflist[1] == varList[j].name) {
+                                                rvar = varList[j].data;
+                                                console.log(iflist);
+                                            }
+
+                                        }
+                                        console.log(lvar + " " + rvar);
+                                    }
+
+                                }
+                                if (lvar == rvar) {
+                                    if (nodeif.iiw != true || nodeif.iiw == undefined) {
+                                        //whileline.push([]);
+                                        console.log(":dw")
+                                        for (let j = 0; j != 1;) {
+                                            oe = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+                                            console.log(oe)
+                                            nodeif = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                            console.log(nodeif);
+                                            if (nodeif.group == whileline[a][i].group, nodeif.category != "EndIf") {
+                                                whileline[a + 1].push(nodeif);
+                                                console.log(whileline);
+                                                console.log(nodeif);
+
+                                            }
+                                            else if (nodeif.category == "If") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                            }
+                                            else if (nodeif.category == "While") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                            }
+                                            else if (nodeif.group == undefined) {
+                                                break;
+                                                console.log("dwl")
+                                            }
+                                            else if (nodeif.category == "EndIf", nodeif.group == whileline[a][i].group) {
+                                                break;
+                                                console.log("dd")
+                                            }
+
+                                        }
+                                    }
+
+                                    for (let i = 1; i < whileline.length; i++) {
+                                        whileline[i - 1] = removeDuplicates(whileline[i - 1]);
+                                    }
+                                    runinlist(a + 1, whileline);
+                                }
+                                else if (lvar != rvar) {
+                                    if (nodeif.iiw != true || nodeif.iiw == undefined) {
+                                        //whileline.push([]);
+                                        for (let j = 0; j != 1;) {
+                                            console.log(of);
+                                            nodeif = myDiagram.model.nodeDataArray.find(item => item.key === of.to);
+                                            of = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+
+                                            console.log(nodeif);
+
+                                            if (nodeif.group == whileline[a][i].group, nodeif.category != "EndIf") {
+                                                whileline[a + 1].push(nodeif);
+                                                console.log(ifline);
+
+
+                                            }
+                                            else if (nodeif.category == "If") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                            }
+                                            else if (nodeif.category == "While") {
+                                                if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == whileline[a][i].group) {
+                                                    whileline[a + 1].push(nodeif);
+                                                }
+                                                console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                            }
+                                            else if (nodeif.group == undefined) {
+                                                break;
+                                                console.log("dwl")
+                                            }
+                                            else if (nodeif.category == "EndIf", nodeif.group == whileline[a][i].group) {
+                                                break;
+                                                console.log("dd")
+                                            }
+
+                                            //i +=1;
+                                        }
+                                    }
+                                    for (let i = 1; i < whileline.length; i++) {
+                                        whileline[i - 1] = removeDuplicates(whileline[i - 1]);
+                                    }
+                                    runinlist(a + 1, whileline);
+                                }
+
+
+
+                                //console.log(ifline);
+
+                            }
+                            /*whileline.pop();
+                            console.log(whileline);*/
+
+                            for (let j = 0; j < p; j++) {
+
+                            }
+
+                        }
+                        if (whileline[a][i].category == "While") {
+                            whileline[a + 1] = [];
+                            whiletext = whileline[a][i].text;
+                            let wgroup = [];
+                            console.log(whileline[a][i].group);
+                            /*for (let j = 0; j < z; j++) {
+                                if (TimeLine[j].group == undefined) {
+                                   
+                                }
+                                else {
+                                    if (TimeLine[j].group == TimeLine[i].group) {
+                                        wgroup.push(TimeLine[j]);
+                                    }
+                                }
+    
+                            }*/
+                            console.log(wgroup);
+                            oe = myDiagram.model.linkDataArray.find(item => item.from === whileline[a][i].key);
+                            endwhile = myDiagram.model.nodeDataArray.filter(function (item) { return item["group"] == whileline[a][i].group && item["category"] == "EndWhile"; })
+                            console.log(oe);
+                            console.log(endwhile);
+                            whilelog = []
+                            whilegroup = whileline[a][i].group;
+                            console.log(whileline[a][i])
+                            let lvar;
+                            let rvar;
+                            whileline[a + 1].push([]);
+
+                            if (whiletext.includes("<")) {
+                                whilelist = whiletext.split("<");
+                                console.log(whilelist);
+                                nodewhile = whileline[a][i];
+                                console.log(whileline[a][i])
+
+                                for (let y = 0; y != 1;) {
+                                    console.log(whileline[a][i])
+                                    oe = myDiagram.model.linkDataArray.find(item => item.from === nodewhile.key);
+                                    console.log(whileline[a][i])
+                                    if (oe.to != whileline[a][i].key) {
+                                        if (oe.text == "next") {
+                                            console.log("help")
+                                            for (let h = 0; h < myDiagram.model.linkDataArray.length; h++) {
+                                                if (myDiagram.model.linkDataArray.text != "next") {
+                                                    console.log(myDiagram.model.linkDataArray[h].from)
+                                                    console.log(nodewhile.key)
+                                                    if (myDiagram.model.linkDataArray[h].from == nodewhile.key) {
+                                                        console.log("yes")
+                                                        oe = myDiagram.model.linkDataArray[h]
+                                                        console.log(oe);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    nodewhile = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                    console.log(nodewhile);
+
+                                    if (nodewhile.group == whileline[a][i].group/*, nodewhile.category != "EndWhile"*/) {
+                                        whileline[a + 1].push(nodewhile);
+                                        console.log(nodewhile.group);
+                                        console.log(whileline[a][i].group);
+                                        console.log(whileline);
+
+                                        if (nodewhile.category == "EndWhile") {
+                                            break;
+                                        }
+                                    }
+                                    else if (nodewhile.category == "If") {
+                                        if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "If"; })[0].group == whileline[a][i].group) {
+                                            whileline[a + 1].push(nodewhile);
+                                        }
+                                    }
+                                    else if (nodewhile.category == "While") {
+                                        if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0].group == whileline[a][i].group) {
+                                            whileline[a + 1].push(nodewhile);
+                                        }
+                                        console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0]);
+                                    }
+                                    else if (nodewhile.group == undefined) {
+
+                                        break;
+                                        console.log("dwl")
+                                    }
+                                    else if (nodewhile.category == "EndWhile", nodewhile.group == whileline[a][i].group) {
+                                        console.log(whileline[a][i]);
+                                        console.log(nodewhile.group);
+                                        break;
+
+                                    }
+                                    //i +=1;
+                                }
+                                let gp;
+                                for (let y = 0; y < p; y++) {
+                                    if (whilelist[0] == varList[y].name) {
+                                        console.log(whilelist);
+                                        lvar = varList[y].data;
+                                        rvar = parseInt(whilelist[1]);
+                                        for (let j = 0; j < p; j++) {
+                                            if (whilelist[1] == varList[j].name) {
+                                                rvar = varList[j].data;
+                                                console.log(whilelist);
+                                            }
+
+                                        }
+                                        console.log(lvar + " " + rvar);
+                                    }
+
+                                }
+                                while (lvar < rvar) {
+
+                                    for (let j = 0; j < p; j++) {
+                                        if (whilelist[1] == varList[j].name) {
+                                            rvar = varList[j].data;
+                                            console.log(whilelist);
+                                        }
+
+
+                                    }
+                                    for (let y = 0; y < p; y++) {
+                                        if (whilelist[0] == varList[y].name) {
+
+                                            lvar = varList[y].data
+                                        }
+
+                                    }
+                                    if (lvar >= rvar) break;
+
+                                    console.log("w")
+                                    runinwhile(a + 1,whileline);
+                                }
+                                console.log(whileline);
+                                //console.log(ifline);
+
+                            }
+                            if (whiletext.includes(">")) {
+                                whilelist = whiletext.split(">");
+                                console.log(whilelist);
+                                nodewhile = whileline[a][i];
+
+
+                                for (let y = 0; y != 1;) {
+                                    oe = myDiagram.model.linkDataArray.find(item => item.from === nodewhile.key);
+                                    console.log(oe)
+                                    if (oe.to != whileline[a][i].key) {
+                                        if (oe.text == "next") {
+                                            console.log("help")
+                                            for (let h = 0; h < myDiagram.model.linkDataArray.length; h++) {
+                                                if (myDiagram.model.linkDataArray.text != "next") {
+                                                    console.log(myDiagram.model.linkDataArray[h].from)
+                                                    console.log(nodewhile.key)
+                                                    if (myDiagram.model.linkDataArray[h].from == nodewhile.key) {
+                                                        console.log("yes")
+                                                        oe = myDiagram.model.linkDataArray[h]
+                                                        console.log(oe);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    nodewhile = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                    console.log(nodewhile);
+                                    if (nodewhile.group == whileline[a][i].group) {
+                                        whileline[a + 1].push(nodewhile);
+                                        console.log(whileline);
+                                        console.log(nodewhile.group);
+                                        if (nodewhile.color == undefined) {
+                                            break;
+                                        }
+                                    }
+                                    else if (nodewhile.category == "If") {
+                                        if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "If"; })[0].group == whileline[a][i].group) {
+                                            whileline[a + 1].push(nodewhile);
+                                        }
+                                    }
+                                    else if (nodewhile.category == "While") {
+                                        if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0].group == whileline[a][i].group) {
+                                            whileline[a + 1].push(nodewhile);
+                                        }
+                                        console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0]);
+                                    }
+                                    else if (nodewhile.group == undefined) {
+
+                                        break;
+                                        console.log("dwl")
+                                    }
+                                    else if (nodewhile.category == "EndWhile", nodewhile.group == whileline[a][i].group) {
+                                        break;
+                                        console.log("dd")
+                                    }
+                                    //i +=1;
+                                }
+                                let gp;
+                                for (let y = 0; y < p; y++) {
+                                    if (whilelist[0] == varList[y].name) {
+                                        console.log(whilelist);
+                                        lvar = varList[y].data;
+                                        rvar = parseInt(whilelist[1]);
+                                        for (let j = 0; j < p; j++) {
+                                            if (whilelist[1] == varList[j].name) {
+                                                rvar = varList[j].data;
+                                                console.log(whilelist);
+                                            }
+
+                                        }
+                                        console.log(lvar + " " + rvar);
+                                    }
+
+                                }
+                                while (lvar > rvar) {
+
+                                    for (let j = 0; j < p; j++) {
+                                        if (whilelist[1] == varList[j].name) {
+                                            rvar = varList[j].data;
+                                            console.log(whilelist);
+                                        }
+
+
+                                    }
+                                    for (let y = 0; y < p; y++) {
+                                        if (whilelist[0] == varList[y].name) {
+
+                                            lvar = varList[y].data
+                                        }
+
+                                    }
+                                    if (lvar <= rvar) break;
+
+                                    console.log("w")
+                                    runinwhile(a + 1,whileline);
+                                }
+                                console.log(whileline);
+                                //console.log(ifline);
+
+                            }
+                            if (whiletext.includes("=")) {
+                                whilelist = whiletext.split("=");
+                                console.log(whilelist);
+                                nodewhile = whileline[a][i];
+
+
+                                for (let y = 0; y != 1;) {
+                                    oe = myDiagram.model.linkDataArray.find(item => item.from === nodewhile.key);
+                                    console.log(oe)
+                                    if (oe.to != whileline[a][i].key) {
+                                        if (oe.text == "next") {
+                                            console.log("help")
+                                            for (let h = 0; h < myDiagram.model.linkDataArray.length; h++) {
+                                                if (myDiagram.model.linkDataArray.text != "next") {
+                                                    console.log(myDiagram.model.linkDataArray[h].from)
+                                                    console.log(nodewhile.key)
+                                                    if (myDiagram.model.linkDataArray[h].from == nodewhile.key) {
+                                                        console.log("yes")
+                                                        oe = myDiagram.model.linkDataArray[h]
+                                                        console.log(oe);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    nodewhile = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                    console.log(nodewhile);
+                                    if (nodewhile.group == whileline[a][i].group) {
+                                        whileline[a + 1].push(nodewhile);
+                                        console.log(whileline);
+                                        console.log(nodewhile.group);
+                                        if (nodewhile.color == undefined) {
+                                            break;
+                                        }
+                                    }
+                                    else if (nodewhile.category == "If") {
+                                        if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "If"; })[0].group == whileline[a][i].group) {
+                                            whileline[a + 1].push(nodewhile);
+                                        }
+                                    }
+                                    else if (nodewhile.category == "While") {
+                                        if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0].group == whileline[a][i].group) {
+                                            whileline[a + 1].push(nodewhile);
+                                        }
+                                        console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0]);
+                                    }
+                                    else if (nodewhile.group == undefined) {
+
+                                        break;
+                                        console.log("dwl")
+                                    }
+                                    else if (nodewhile.category == "EndWhile", nodewhile.group == whileline[a][i].group) {
+                                        break;
+                                        console.log("dd")
+                                    }
+                                    //i +=1;
+                                }
+                                let gp;
+                                for (let y = 0; y < p; y++) {
+                                    if (whilelist[0] == varList[y].name) {
+                                        console.log(whilelist);
+                                        lvar = varList[y].data;
+                                        rvar = parseInt(whilelist[1]);
+                                        for (let j = 0; j < p; j++) {
+                                            if (whilelist[1] == varList[j].name) {
+                                                rvar = varList[j].data;
+                                                console.log(whilelist);
+                                            }
+
+                                        }
+                                        console.log(lvar + " " + rvar);
+                                    }
+
+                                }
+                                while (lvar == rvar) {
+
+                                    for (let j = 0; j < p; j++) {
+                                        if (whilelist[1] == varList[j].name) {
+                                            rvar = varList[j].data;
+                                            console.log(whilelist);
+                                        }
+
+
+                                    }
+                                    for (let y = 0; y < p; y++) {
+                                        if (whilelist[0] == varList[y].name) {
+
+                                            lvar = varList[y].data
+                                        }
+
+                                    }
+                                    if (lvar != rvar) break;
+
+                                    console.log("w")
+                                    runinwhile(a + 1,whileline);
+                                }
+                                console.log(whileline);
+                                //console.log(ifline);
+
+                            }
+                            myDiagram.model.nodeDataArray.map(function (item) {
+                                delete item.iiw;
+                                return item;
+                            });
+
+                        }
+
+
+
+                    }
+                }
+
+                for (let i = 0; i < z; i++) {
+                    console.log(TimeLine[i]);
+                    if (TimeLine[i].category == "Declare") {
+                        dataObject.name = TimeLine[i].text;
+                        console.log(dataObject);
+                        varList.push(dataObject);
+                        varList[vlc].data = 0;
+                        //varList.add(list[i].text);
+                        console.log(varList);
+
+                        p = varList.length;
+
+                        console.log(varList[vlc].name);
+                        vlc += 1;
+                        dataObject = { name: "", data: "", type: "" };
+                    }
+                    else if (TimeLine[i].category == "Assign") {
+                        text = TimeLine[i].text;
+
+                        textList = TimeLine[i].text.split('=');
+                        text = "";
+                        for (let i = 0; i < textList.length; i++) {
+                            text += textList[i] + " ";
+                            if (iuyh == 0) {
+                                text += "= ";
+                                iuyh += 1;
+                            }
+                        }
+
+                        console.log(textList.length);
+                        console.log(text);
+                        textList = text.split(' ');
+                        console.log(textList);
+                        gt = textList.length;
+                        var marklist = ["+", "-", "*", "/"]
+                        let bg = 0;
+                        for (let j = 0; j < p; j++) {
+                            //console.log(varList[0].name);
+
+                            if (textList[0] == varList[j].name/*, varList[j].name != textList[2]*/) {
+                                bg += 1;
+                                console.log(text.indexOf("="));
+                                var koo = text.indexOf("=");
+                                text = text.substring(koo += 1, text.length);
+                                console.log(text);
+                                for (let i = 0; i < p; i++) {
+                                    if (text.includes(varList[i].name)) {
+                                        console.log(varList[i].data);
+                                        //text.replace(varList[j].name, varList[j].data);
+                                        text = text.replaceAll(varList[i].name, varList[i].data);
+                                        console.log(text);
+                                    }
+
+                                }
+                                function check() {
+                                    for (let i = 0; i < p; i++) {
+                                        for (let y = 0; y < ty.length; y++) {
+                                            console.log(ty);
+                                            console.log(ty[y]);
+                                            if (ty[y] == ' null') {
+                                                alert(EIV);
+                                            }
+                                        }
+                                    }
+                                }
+                                if (text.includes("+")) {
+                                    var ty = text.split("+");
+                                    check()
+                                }
+                                else if (text.includes("-")) {
+                                    var ty = text.split("-");
+                                    check()
+                                }
+                                else if (text.includes("**")) {
+                                    var ty = text.split("**");
+                                    check()
+                                }
+                                else if (text.includes("/")) {
+                                    var ty = text.split("/");
+                                    check()
+                                }
+                                else if (text.includes("*")) {
+                                    var ty = text.split("*");
+                                    check()
+                                }
+                                else if (text.includes("%")) {
+                                    var ty = text.split("%");
+                                    check()
+                                }
+
+
+
+                                console.log(ty)
+
+
+                                varList[j].data = eval(text);
+                                console.log(varList[j].data);
+
+                                //console.log(varList[j].data);
+
+                            }
+
+                        }
+                        if (bg == 0) {
+                            alert(EVN);
+
+                        }
+                        //dataObject.name = "";
+                        iuyh = 0;
+
+                    }
+
+                    else if (TimeLine[i].category == "Output") {
+                        let bg = 0;
+                        let aol = TimeLine[i].text;
+                        let outarray = TimeLine[i].text.split("")
+                        for (let j = 0; j < p; j++) {
+                            if (TimeLine[i].text == varList[j].name) {
+                                bg += 1;
+
+                                if (dte == 0) {
+                                    document.getElementById("textOut").value = varList[j].data + "\r\n";
+                                    dte += 1;
+                                }
+                                else {
+                                    document.getElementById("textOut").value += varList[j].data + "\r\n";
+                                }
+                            }
+                        }
+                        if (outarray[0] == '"') {
+                            if (outarray[outarray.length - 1] == '"') {
+                                document.getElementById("textOut").value += aol.slice(1, outarray.length - 1) + "\r\n";
+                            }
+                            console.log(TimeLine[i].text);
+                        }
+                        else if (outarray[0] == "'") {
+                            if (outarray[outarray.length - 1] == "'") {
+                                document.getElementById("textOut").value += aol.slice(1, outarray.length - 1) + "\r\n";
+                            }
+                            console.log(TimeLine[i].text);
+                        }
+                        /*if (bg == 0) {
+                            alert(EVN);
+
+                        }*/
+                    }
+                    else if (TimeLine[i].category == "Input") {
+                        let bg = 0;
+                        for (let j = 0; j < p; j++) {
+                            if (TimeLine[i].text == varList[j].name) {
+                                bg += 1;
+                                varList[j].data = prompt("จงใส่ค่า " + varList[j].name);
+                                console.log(varList[j].data);
+                            }
+                        }
+                        if (bg == 0) {
+                            alert(EVN);
+
+                        }
+                    }
+                    else if (TimeLine[i].color == "#ffd0d0") {
+                        var ifinline = [];
+                        iftext = TimeLine[i].text;
+                        oe = myDiagram.model.linkDataArray.find(item => item.from === TimeLine[i].key);
+                        of = myDiagram.model.linkDataArray.filter(function (item) { return item["from"] == TimeLine[i].key && item["text"] == "false"; })[0]
+                        endif = myDiagram.model.nodeDataArray.find(item => item.from === TimeLine[i].group, ted => ({ category }) => category === "endif");
+                        console.log("dw");                        //for (i != )
+                        console.log(oe);
+                        console.log(of);
+                        iflog = [];
+                        ifgroup = TimeLine[i].group;
+                        //console.log(ifgroup);
+
+
+                        let lvar;
+                        let rvar;
+                        ifline.push(iflog);
+                        iflinf.push([]);
+
+                        if (iftext.includes("<")) {
+                            iflist = iftext.split("<");
+                            console.log(iflist);
+                            nodeif = TimeLine[i];
+                            nodfif = TimeLine[i];
+
+
+                            for (let j = 0; j != 1;) {
+                                oe = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+
+                                myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == TimeLine[i].group
+                                console.log(oe);
+
+                                nodeif = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+
+                                console.log(nodeif);
+                                console.log()
+                                if (nodeif.group == TimeLine[i].group) {
+                                    ifline[0].push(nodeif);
+                                    console.log(ifline);
+                                    console.log(nodeif);
+                                    /*if (nodeif.color == undefined) {
+                                        break;
+                                    }*/
+                                }
+                                else if (nodeif.category == "If") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == TimeLine[i].group) {
+                                        ifline[0].push(nodeif);
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                }
+                                else if (nodeif.category == "While") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == TimeLine[i].group) {
+                                        ifline[0].push(nodeif);
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                }
+                                else if (nodeif.group == undefined) {
+                                    break;
+                                    console.log("dwl")
+                                }
+                                //i +=1;
+                            }
+                            for (let j = 0; j != 1;) {
+                                console.log(of);
+                                console.log(nodfif);
+
+                                if (nodfif.group == TimeLine[i].group) {
+                                    iflinf[0].push(nodfif);
+                                    console.log(iflinf);
+                                    console.log(nodfif);
+
+                                }
+                                else if (nodfif.category == "If") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "If"; })[0].group == TimeLine[i].group) {
+                                        iflinf[0].push(nodfif);
+
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "If"; })[0]);
+                                }
+                                else if (nodfif.category == "While") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "While"; })[0].group == TimeLine[i].group) {
+                                        iflinf[0].push(nodfif);
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "While"; })[0]);
+                                }
+                                else if (nodfif.group == undefined) {
+                                    break;
+                                    console.log("dwl")
+                                }
+                                nodfif = myDiagram.model.nodeDataArray.find(item => item.key === of.to);
+                                of = myDiagram.model.linkDataArray.find(item => item.from === nodfif.key);
+                                //i +=1;
+                            }
+                            iflinf[0].shift();
+                            console.log(iflinf);
+                            for (let i = 0; i < p; i++) {
+                                if (iflist[0] == varList[i].name) {
+                                    console.log(iflist);
+                                    lvar = varList[i].data;
+                                    rvar = parseInt(iflist[1]);
+                                    for (let j = 0; j < p; j++) {
+                                        if (iflist[1] == varList[j].name) {
+                                            rvar = varList[j].data;
+                                            console.log(iflist);
+                                        }
+
+                                    }
+                                    console.log(lvar + " " + rvar);
+                                }
+
+                            }
+                            if (lvar < rvar) {
+
+                                runinlist(0, ifline);
+                                console.log("w")
+                            }
+                            else if (lvar >= rvar) {
+                                runinlist(0, iflinf);
+                                console.log("f")
+                            }
+                            console.log(ifline);
+                            for (let g = 0; g < ytyt.length; g++) {
+                                myDiagram.model.linkDataArray.push(ytyt[g]);
+                                console.log(myDiagram.model.linkDataArray)
+                            }
+                            //console.log(ifline);
+
+                        }
+                        else if (iftext.includes(">")) {
+                            iflist = iftext.split(">");
+                            console.log(iflist);
+                            nodeif = TimeLine[i];
+                            nodfif = TimeLine[i];
+
+
+                            for (let j = 0; j != 1;) {
+                                oe = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+
+                                myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == TimeLine[i].group
+                                console.log(oe);
+
+                                nodeif = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+
+                                console.log(nodeif);
+                                console.log()
+                                if (nodeif.group == TimeLine[i].group) {
+                                    ifline[0].push(nodeif);
+                                    console.log(ifline);
+                                    console.log(nodeif);
+                                    /*if (nodeif.color == undefined) {
+                                        break;
+                                    }*/
+                                }
+                                else if (nodeif.category == "If") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == TimeLine[i].group) {
+                                        ifline[0].push(nodeif);
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                }
+                                else if (nodeif.category == "While") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == TimeLine[i].group) {
+                                        ifline[0].push(nodeif);
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                }
+                                else if (nodeif.group == undefined) {
+                                    break;
+                                    console.log("dwl")
+                                }
+                                //i +=1;
+                            }
+                            for (let j = 0; j != 1;) {
+
+
+
+                                console.log(of);
+
+
+                                console.log(nodfif);
+
+                                if (nodfif.group == TimeLine[i].group) {
+                                    iflinf[0].push(nodfif);
+                                    console.log(iflinf);
+                                    console.log(nodfif);
+
+                                }
+                                else if (nodfif.category == "If") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "If"; })[0].group == TimeLine[i].group) {
+                                        iflinf[0].push(nodfif);
+
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "If"; })[0]);
+                                }
+                                else if (nodfif.category == "While") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "While"; })[0].group == TimeLine[i].group) {
+                                        iflinf[0].push(nodfif);
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "While"; })[0]);
+                                }
+                                else if (nodfif.group == undefined) {
+                                    break;
+                                    console.log("dwl")
+                                }
+                                if (of != undefined) {
+                                    nodfif = myDiagram.model.nodeDataArray.find(item => item.key === of.to);
+                                    of = myDiagram.model.linkDataArray.find(item => item.from === nodfif.key);
+                                }
+
+                                //i +=1;
+                            }
+                            iflinf[0].shift();
+                            console.log(iflinf);
+                            for (let i = 0; i < p; i++) {
+                                if (iflist[0] == varList[i].name) {
+                                    console.log(iflist);
+                                    lvar = varList[i].data;
+                                    rvar = parseInt(iflist[1]);
+                                    for (let j = 0; j < p; j++) {
+                                        if (iflist[1] == varList[j].name) {
+                                            rvar = varList[j].data;
+                                            console.log(iflist);
+                                        }
+
+                                    }
+                                    console.log(lvar + " " + rvar);
+                                }
+
+                            }
+                            if (lvar > rvar) {
+
+                                runinlist(0, ifline);
+                                console.log("w")
+                            }
+                            else if (lvar <= rvar) {
+                                runinlist(0, iflinf);
+                                console.log("f")
+                            }
+                            console.log(ifline);
+                            //console.log(ifline);
+
+                        }
+                        else if (iftext.includes("=")) {
+                            iflist = iftext.split("=");
+                            console.log(iflist);
+                            nodeif = TimeLine[i];
+                            nodfif = TimeLine[i];
+
+
+                            for (let j = 0; j != 1;) {
+                                oe = myDiagram.model.linkDataArray.find(item => item.from === nodeif.key);
+
+                                myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == TimeLine[i].group
+                                console.log(oe);
+
+                                nodeif = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+
+                                console.log(nodeif);
+                                console.log()
+                                if (nodeif.group == TimeLine[i].group) {
+                                    ifline[0].push(nodeif);
+                                    console.log(ifline);
+                                    console.log(nodeif);
+                                    /*if (nodeif.color == undefined) {
+                                        break;
+                                    }*/
+                                }
+                                else if (nodeif.category == "If") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0].group == TimeLine[i].group) {
+                                        ifline[0].push(nodeif);
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "If"; })[0]);
+                                }
+                                else if (nodeif.category == "While") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0].group == TimeLine[i].group) {
+                                        ifline[0].push(nodeif);
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodeif.group && item["cat"] == "While"; })[0]);
+                                }
+                                else if (nodeif.group == undefined) {
+                                    break;
+                                    console.log("dwl")
+                                }
+                                //i +=1;
+                            }
+                            for (let j = 0; j != 1;) {
+
+
+
+                                console.log(of);
+
+
+                                console.log(nodfif);
+
+                                if (nodfif.group == TimeLine[i].group) {
+                                    iflinf[0].push(nodfif);
+                                    console.log(iflinf);
+                                    console.log(nodfif);
+
+                                }
+                                else if (nodfif.category == "If") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "If"; })[0].group == TimeLine[i].group) {
+                                        iflinf[0].push(nodfif);
+
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "If"; })[0]);
+                                }
+                                else if (nodfif.category == "While") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "While"; })[0].group == TimeLine[i].group) {
+                                        iflinf[0].push(nodfif);
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodfif.group && item["cat"] == "While"; })[0]);
+                                }
+                                else if (nodfif.group == undefined) {
+                                    break;
+                                    console.log("dwl")
+                                }
+                                nodfif = myDiagram.model.nodeDataArray.find(item => item.key === of.to);
+                                of = myDiagram.model.linkDataArray.find(item => item.from === nodfif.key);
+                                //i +=1;
+                            }
+                            iflinf[0].shift();
+                            console.log(iflinf);
+                            for (let i = 0; i < p; i++) {
+                                if (iflist[0] == varList[i].name) {
+                                    console.log(iflist);
+                                    lvar = varList[i].data;
+                                    rvar = parseInt(iflist[1]);
+                                    for (let j = 0; j < p; j++) {
+                                        if (iflist[1] == varList[j].name) {
+                                            rvar = varList[j].data;
+                                            console.log(iflist);
+                                        }
+
+                                    }
+                                    console.log(lvar + " " + rvar);
+                                }
+
+                            }
+                            if (lvar == rvar) {
+
+                                runinlist(0, ifline);
+                                console.log("w")
+                            }
+                            else if (lvar != rvar) {
+                                runinlist(0, iflinf);
+                                console.log("f")
+                            }
+                            console.log(ifline);
+                            //console.log(ifline);
+
+                        }
+
+                        /*iflist = TimeLine[i].text.split("<");
+                        iflist = TimeLine[i].text.split("<");
+                        iflist = TimeLine[i].text.split("=");*/
+                        for (let j = 0; j < p; j++) {
+
+                        }
+                        ifline = [];
+                    }
+                    if (TimeLine[i].category == "While") {
+                        var whileline = [];
+                        var ytyt = [];
+                        var fg = 0;
+                        whiletext = TimeLine[i].text;
+                        let wgroup = [];
+                        console.log(TimeLine[i].group);
+                        /*for (let g = 0; g < myDiagram.model.linkDataArray.length; g++) {
+                            console.log(myDiagram.model.linkDataArray[g].text)
+                            if (myDiagram.model.linkDataArray[g].to != TimeLine[i].key) {
+                                console.log(myDiagram.model.linkDataArray[g])
+                                if (myDiagram.model.linkDataArray[g].text == "next") {
+                                    ytyt[fg] = myDiagram.model.linkDataArray[g];
+                                    delete myDiagram.model.linkDataArray[g]
+                                    console.log(ytyt)
+                                    fg += 1;
+                                }
+                            }
+
+                        }*/
+                        /*for (let j = 0; j < z; j++) {
+                            if (TimeLine[j].group == undefined) {
+                               
+                            }
+                            else {
+                                if (TimeLine[j].group == TimeLine[i].group) {
+                                    wgroup.push(TimeLine[j]);
+                                }
+                            }
+
+                        }*/
+                        console.log(wgroup);
+                        oe = myDiagram.model.linkDataArray.find(item => item.from === TimeLine[i].key);
+                        endwhile = myDiagram.model.nodeDataArray.filter(function (item) { return item["group"] == TimeLine[i].group && item["category"] == "EndWhile"; })
+                        console.log(oe);
+                        console.log(endwhile);
+                        whilelog = []
+                        whilegroup = TimeLine[i].group;
+                        console.log(TimeLine[i])
+                        let lvar;
+                        let rvar;
+                        whileline.push([]);
+
+                        if (whiletext.includes("<")) {
+                            whilelist = whiletext.split("<");
+                            console.log(whilelist);
+                            nodewhile = TimeLine[i];
+                            console.log(TimeLine[i])
+
+                            for (let y = 0; y != 1;) {
+                                console.log(nodewhile.key)
+                                oe = myDiagram.model.linkDataArray.find(item => item.from === nodewhile.key);
+                                if (oe.to != TimeLine[i].key) {
+                                    if (oe.text == "next") {
+                                        console.log("help")
+                                        for (let h = 0; h < myDiagram.model.linkDataArray.length; h++) {
+                                            if (myDiagram.model.linkDataArray.text != "next") {
+                                                console.log(myDiagram.model.linkDataArray[h].from)
+                                                console.log(nodewhile.key)
+                                                if (myDiagram.model.linkDataArray[h].from == nodewhile.key) {
+                                                    console.log("yes")
+                                                    oe = myDiagram.model.linkDataArray[h]
+                                                    console.log(oe);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                nodewhile = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                console.log(nodewhile);
+
+                                console.log(nodewhile.group);
+
+                                if (nodewhile.group == TimeLine[i].group/*, nodewhile.category != "EndWhile"*/) {
+                                    whileline[0].push(nodewhile);
+                                    console.log(nodewhile.group);
+                                    console.log(TimeLine[i].group);
+                                    console.log(whileline);
+
+                                    if (nodewhile.category == "EndWhile") {
+                                        console.log("Dw")
+                                        break;
+                                    }
+                                }
+                                else if (nodewhile.category == "If") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "If"; })[0].group == TimeLine[i].group) {
+                                        whileline[0].push(nodewhile);
+                                        console.log("if")
+                                    }
+                                }
+                                else if (nodewhile.category == "While") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0].group == TimeLine[i].group) {
+                                        whileline[0].push(nodewhile);
+                                        console.log("while")
+                                        Cwe = nodewhile.key;
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0]);
+                                }
+                                else if (nodewhile.group == undefined) {
+
+                                    break;
+                                    console.log("dwl")
+                                }
+                                else if (nodewhile.category == "EndWhile", nodewhile.group == TimeLine[i].group) {
+                                    console.log(TimeLine[i]);
+                                    console.log(nodewhile.group);
+                                    break;
+
+                                }
+                                else if (nodewhile.category == "EndWhile", nodewhile.group != TimeLine[i].group) {
+
+                                }
+                                //i +=1;
+                            }
+                            let gp;
+                            for (let y = 0; y < p; y++) {
+                                if (whilelist[0] == varList[y].name) {
+                                    console.log(whilelist);
+                                    lvar = varList[y].data;
+                                    rvar = parseInt(whilelist[1]);
+                                    for (let j = 0; j < p; j++) {
+                                        if (whilelist[1] == varList[j].name) {
+                                            rvar = varList[j].data;
+                                            console.log(whilelist);
+                                        }
+
+                                    }
+                                    console.log(lvar + " " + rvar);
+                                }
+
+                            }
+                            while (lvar < rvar) {
+
+                                for (let j = 0; j < p; j++) {
+                                    if (whilelist[1] == varList[j].name) {
+                                        rvar = varList[j].data;
+                                        console.log(whilelist);
+                                    }
+
+
+                                }
+                                for (let y = 0; y < p; y++) {
+                                    if (whilelist[0] == varList[y].name) {
+
+                                        lvar = varList[y].data
+                                    }
+
+                                }
+                                if (lvar >= rvar) break;
+
+                                console.log("w")
+                                runinwhile(0,whileline);
+                            }
+                            console.log(whileline);
+                            //console.log(ifline);
+
+                        }
+                        if (whiletext.includes(">")) {
+                            whilelist = whiletext.split(">");
+                            console.log(whilelist);
+                            nodewhile = TimeLine[i];
+
+
+                            for (let y = 0; y != 1;) {
+                                oe = myDiagram.model.linkDataArray.find(item => item.from === nodewhile.key);
+                                console.log(oe)
+                                if (oe.to != TimeLine[i].key) {
+                                    if (oe.text == "next") {
+                                        console.log("help")
+                                        for (let h = 0; h < myDiagram.model.linkDataArray.length; h++) {
+                                            if (myDiagram.model.linkDataArray.text != "next") {
+                                                console.log(myDiagram.model.linkDataArray[h].from)
+                                                console.log(nodewhile.key)
+                                                if (myDiagram.model.linkDataArray[h].from == nodewhile.key) {
+                                                    console.log("yes")
+                                                    oe = myDiagram.model.linkDataArray[h]
+                                                    console.log(oe);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                nodewhile = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                console.log(nodewhile);
+
+                                if (nodewhile.group == TimeLine[i].group) {
+                                    whileline[0].push(nodewhile);
+                                    console.log(whileline);
+                                    console.log(nodewhile.group);
+                                    if (nodewhile.color == undefined) {
+                                        console.log("Dw")
+                                        break;
+                                    }
+                                }
+                                else if (nodewhile.category == "If") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "If"; })[0].group == TimeLine[i].group) {
+                                        whileline[0].push(nodewhile);
+                                    }
+                                }
+                                else if (nodewhile.category == "While") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0].group == TimeLine[i].group) {
+                                        whileline[0].push(nodewhile);
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0]);
+                                }
+                                else if (nodewhile.group == undefined) {
+
+                                    break;
+                                    console.log("dwl")
+                                }
+                                else if (nodewhile.category == "EndWhile", nodewhile.group == TimeLine[i].group) {
+                                    break;
+                                    console.log("dd")
+                                }
+                                //i +=1;
+                            }
+                            let gp;
+                            for (let y = 0; y < p; y++) {
+                                if (whilelist[0] == varList[y].name) {
+                                    console.log(whilelist);
+                                    lvar = varList[y].data;
+                                    rvar = parseInt(whilelist[1]);
+                                    for (let j = 0; j < p; j++) {
+                                        if (whilelist[1] == varList[j].name) {
+                                            rvar = varList[j].data;
+                                            console.log(whilelist);
+                                        }
+
+                                    }
+                                    console.log(lvar + " " + rvar);
+                                }
+
+                            }
+                            while (lvar > rvar) {
+
+                                for (let j = 0; j < p; j++) {
+                                    if (whilelist[1] == varList[j].name) {
+                                        rvar = varList[j].data;
+                                        console.log(whilelist);
+                                    }
+
+
+                                }
+                                for (let y = 0; y < p; y++) {
+                                    if (whilelist[0] == varList[y].name) {
+
+                                        lvar = varList[y].data
+                                    }
+
+                                }
+                                if (lvar <= rvar) break;
+
+                                console.log("w")
+                                runinwhile(0,whileline);
+                            }
+                            console.log(whileline);
+                            //console.log(ifline);
+
+                        }
+                        if (whiletext.includes("=")) {
+                            whilelist = whiletext.split("=");
+                            console.log(whilelist);
+                            nodewhile = TimeLine[i];
+
+
+                            for (let y = 0; y != 1;) {
+                                oe = myDiagram.model.linkDataArray.find(item => item.from === nodewhile.key);
+                                console.log(oe)
+                                if (oe.to != TimeLine[i].key) {
+                                    if (oe.text == "next") {
+                                        console.log("help")
+                                        for (let h = 0; h < myDiagram.model.linkDataArray.length; h++) {
+                                            if (myDiagram.model.linkDataArray.text != "next") {
+                                                console.log(myDiagram.model.linkDataArray[h].from)
+                                                console.log(nodewhile.key)
+                                                if (myDiagram.model.linkDataArray[h].from == nodewhile.key) {
+                                                    console.log("yes")
+                                                    oe = myDiagram.model.linkDataArray[h]
+                                                    console.log(oe);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                nodewhile = myDiagram.model.nodeDataArray.find(item => item.key === oe.to);
+                                console.log(nodewhile);
+                                if (nodewhile.group == TimeLine[i].group) {
+                                    whileline[0].push(nodewhile);
+                                    console.log(whileline);
+                                    console.log(nodewhile.group);
+                                    if (nodewhile.color == undefined) {
+                                        break;
+                                    }
+                                }
+                                else if (nodewhile.category == "If") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "If"; })[0].group == TimeLine[i].group) {
+                                        whileline[0].push(nodewhile);
+                                    }
+                                }
+                                else if (nodewhile.category == "While") {
+                                    if (myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0].group == TimeLine[i].group) {
+                                        whileline[0].push(nodewhile);
+                                    }
+                                    console.log(myDiagram.model.nodeDataArray.filter(function (item) { return item["key"] == nodewhile.group && item["cat"] == "While"; })[0]);
+                                }
+                                else if (nodewhile.group == undefined) {
+
+                                    break;
+                                    console.log("dwl")
+                                }
+                                else if (nodewhile.category == "EndWhile", nodewhile.group == TimeLine[i].group) {
+                                    break;
+                                    console.log("dd")
+                                }
+                                //i +=1;
+                            }
+                            let gp;
+                            for (let y = 0; y < p; y++) {
+                                if (whilelist[0] == varList[y].name) {
+                                    console.log(whilelist);
+                                    lvar = varList[y].data;
+                                    rvar = parseInt(whilelist[1]);
+                                    for (let j = 0; j < p; j++) {
+                                        if (whilelist[1] == varList[j].name) {
+                                            rvar = varList[j].data;
+                                            console.log(whilelist);
+                                        }
+
+                                    }
+                                    console.log(lvar + " " + rvar);
+                                }
+
+                            }
+                            while (lvar == rvar) {
+
+                                for (let j = 0; j < p; j++) {
+                                    if (whilelist[1] == varList[j].name) {
+                                        rvar = varList[j].data;
+                                        console.log(whilelist);
+                                    }
+
+
+                                }
+                                for (let y = 0; y < p; y++) {
+                                    if (whilelist[0] == varList[y].name) {
+
+                                        lvar = varList[y].data
+                                    }
+
+                                }
+                                if (lvar != rvar) break;
+
+                                console.log("w")
+                                runinwhile(0,whileline);
+                            }
+                            console.log(whileline);
+                            //console.log(ifline);
+
+                        }
+                        myDiagram.model.nodeDataArray.map(function (item) {
+                            delete item.iiw;
+                            return item;
+                        });
+
+
+
+                    }
+
+                }
+
+                console.log(myDiagram.model.nodeDataArray);
+            }
+
+            function newDiagram() {
+                myDiagram.model = new go.GraphLinksModel(
+                    {
+                        nodeDataArray:
+                            [
+                                { "key": 1000, "text": "Start", "category": "Start", "color": "#EBC8F7", "border": "#B790C4 " },
+                                { "key": 1001, "text": "End", "category": "End", "color": "#EBC8F7", "border": "#B790C4 " }
+                            ],
+                        linkDataArray:
+                            [
+                                { "from": 1000, "to": 1001 }
+                            ]
+                    });
+            }
+
+            window.addEventListener('DOMContentLoaded', init);
+        </script>
+
+        <div id="sample">
+            <div id="myFlexDiv">
+                <div id="myPODiv">
+                    <div id="myPaletteDiv" style="background-color: floralwhite; border: solid 1px black"></div>
+                    <div id="myOverviewDiv" style="background-color: whitesmoke; border: solid 1px black"></div>
+
+                </div>
+
+                <div id="myDiagramDiv" style="border: solid 1px black"></div>
+                <div id="myOutDiv">
+                    <textarea id="textOut" rows="25" style="background-color: floralwhite; border: solid 1px black">
+
+                    </textarea>
+                    <input type="text" id="fname" name="fname">
+
+                </div>
+            </div>
+
+            <div id="buttons">
+                <!--button id="loadModel" onclick="load()">Load</!--button-->
+                <!---button id="fileModel" onclick="rf()">e</!---button--->
+                <button id="saveModel" onclick="save()">Save</button>
+                <button onclick="newDiagram()">New Diagram</button>
+                <button id="runModel" onclick="run()">run</button>
+                <button id="loadModel" onclick="load()">load</button>
+            </div>
+            <input type="file" id="fileInput">
+            <button onclick="readFile()">Read File</button>
+
+            <textarea id="mySavedModel" style="width:100%;height:200px">
+{ "class": "GraphLinksModel",
+  "nodeDataArray": [
+{"key":1000, "text":"Start", "category":"Start", "color":"#EBC8F7", "border":"#B790C4 "},
+
+{"key":1001, "text":"End", "category":"End", "color":"#EBC8F7", "border":"#B790C4 "}
+ ],
+  "linkDataArray": [
+{"from":1000, "to":1001}
+ ]}
+  </textarea>
+        </div>
+    </div>
+    <!-- * * * * * * * * * * * * * -->
+    <!--  End of GoJS sample code  -->
+    </div>
+</body>
+<!--  This script is part of the gojs.net website, and is not needed to run the sample -->
+<!---script src="../assets/js/goSamples.js"></!---script--->
+
+</html>

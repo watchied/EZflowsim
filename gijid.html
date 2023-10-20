@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<script src="https://unpkg.com/gojs"></script>
+<link rel="stylesheet" href="../extensions/DataInspector.css" />
+<script src="../extensions/DataInspector.js"></script>
+<script id="code">
+    function init() {
+        var $ = go.GraphObject.make;
+        var c;
+        var f =0;
+        var m;
+
+        diagram =
+            $(go.Diagram, "myDiagramDiv",
+                { "undoManager.isEnabled": true });
+
+        diagram.nodeTemplate =
+            $(go.Node, "Auto",
+                { locationSpot: go.Spot.Center },
+                $(go.Shape, "Rectangle",
+                    { fill: "gold" }),
+                $(go.Panel, "Vertical",
+                    { margin: 3 },
+                    $("Button",
+                        {
+                            margin: 2,
+                            click: incrementCounter
+                        },
+                        $(go.TextBlock, "Click me!")),
+                    $(go.TextBlock,
+                        new go.Binding("text", "clickCount",
+                            function (m) { return "Clicked " + F + " times."; }))
+                )
+            );
+        function incrementCounter(e, obj, c) {
+            /*var node = obj.part;
+            var data = node.data;
+            m = diagram.nodes.count;*/
+            if (data && typeof (data.clickCount) === "number") {
+                node.diagram.model.commit(function (m) {
+                    m.set(data, "clickCount", data.clickCount + 2);
+                }, "clicked");
+                
+            }
+            f = f + data.clickCount
+            console.log("ได้เลข "+data.clickCount);
+            console.log("ได้ผลรวม "+ m);
+            
+            
+        }
+
+        diagram.model = new go.GraphLinksModel(
+            [{ clickCount: 0 }]);
+
+
+    }
+
+
+</script>
+
+<body onload="init()">
+    <div id="myDiagramDiv" style="border: solid 1px black; width:100%; height:600px"></div>
+</body>
+
+</html>

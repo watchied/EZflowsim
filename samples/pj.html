@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>GoJS Sample Using DataInspector</title>
+  <!-- Copyright 1998-2019 by Northwoods Software Corporation. -->
+  <meta charset="UTF-8">
+  <script src="https://unpkg.com/gojs"></script>
+  <link rel="stylesheet" href="../extensions/DataInspector.css" />
+  <script src="../extensions/DataInspector.js"></script>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"
+    integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+  <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"
+    integrity="sha256-VazP97ZCwtekAsvgPBSUwPFKdrwD3unUfSGVYrahUqU=" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/gojs@2.2.14/extensions/Figures.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/gojs@2.2.14/extensions/DataInspector.css">
+  <script src="https://unpkg.com/gojs@2.2.14/extensions/DataInspector.js"></script>
+
+  <script id="code">
+    /*function getVar() {
+      var x = document.getElementById("funny").innerHTML;
+      document.getElementById("demo").innerHTML = x;
+    }*/
+    function init() {
+      var $ = go.GraphObject.make;
+      var s = 1;
+      var aw = go.Diagram;
+      let k = { key: 3, text: "Delta", color: "pink", figure: "Pie" };
+
+
+      /*itemtemplates.add("text",
+        $(go.Panel,
+          $(go.TextBlock,
+            new go.Binding("text"))
+        ));*/
+
+
+      myDiagram =
+        $(go.Diagram, "myDiagramDiv",
+          { "undoManager.isEnabled": true });
+
+      myDiagram.addDiagramListener("ObjectDoubleClicked", function (ev) {
+        alert(ev.figure);
+        console.log(ev.subject);
+        console.log(ev.subject.ie);
+      });
+
+      myDiagram.nodeTemplate =
+        $(go.Node, "Auto",
+          $(go.Shape,
+            { fill: "red", portId: "", fromLinkable: true, toLinkable: true, cursor: "pointer" },
+            // THIS IS THE CRUCIAL BINDING, from data.maxLinks to GraphObject.fromMaxLinks
+            new go.Binding("fromMaxLinks", "maxLinks"),
+            new go.Binding("fill", "color"),
+            new go.Binding("figure", "figure")),
+
+
+          $(go.Panel, "Auto", { alignment: go.Spot.Right },
+            /*$(go.Shape, "Ellipse", { fill: "white" }),*/
+            $(go.TextBlock,
+              { margin: 8, editable: true/*สามารถแก้ไขข้อความได้*/ },
+              new go.Binding("text", "color"),
+              new go.Binding("text").makeTwoWay())
+          )/*,
+          $(go.Shape, "Ellipse", { fill: "white", desiredSize: new go.Size(20, 45), alignment: new go.Spot(1.2, 0) })*/
+
+        );
+      /*function showMessage(s) {
+        document.getElementById("diagramEventsMsg").textContent = s;
+      }*/
+
+      /*mydiagram.addDiagramListener("ObjectSingleClicked",
+        function (e) {
+          var part = e.subject.part;
+          if (!(part instanceof go.Link)) showMessage("Clicked on " + part.data.key);
+        });
+
+      mydiagram.addDiagramListener("BackgroundDoubleClicked",
+        function (e) { showMessage("Double-clicked at " + e.mydiagram.lastInput.documentPoint); });
+
+      mydiagram.addDiagramListener("ClipboardPasted",
+        function (e) { showMessage("Pasted " + e.mydiagram.selection.count + " parts"); });*/
+
+
+      somie = myDiagram.model.nodeDataArray =
+        [
+          { key: 0, text: "Alpha", color: "lightblue", figure: "Rectangle" },
+          { key: 1, text: s, color: "orange", figure: "Triangle" },
+          { key: 2, text: "Gamma", color: "lightgreen" }
+
+        ];
+      series = myDiagram.model.linkDataArray =
+        [
+          { from: 0, to: 3 }
+        ]
+      myDiagram.model.addNodeData(k)
+      //myDiagram.model.removeNodeData(k)
+      myDiagram.model.setKeyForNodeData(k, key = 5)//เปลี่ยนkeyได้
+      m = myDiagram.model.findNodeDataForKey(1)//เหมือนกับอันล่างแต่เป็นของgojs(ตอนนี้ยังไม่รู้ความต่าง)
+      var sp = somie.find(item => item.key == 0)
+      var olo = m.color + " " + m.figure;
+      /*var ef = myDiagram.findNodeDataForKey("2")*/
+      document.getElementById("wdwd").innerHTML = olo;
+
+      /*document.write(olo);*/
+
+
+      myDiagram.mode.addNodeData()
+
+      var inspector = new Inspector("myInspectorDiv", myDiagram,
+        {
+          properties:
+          {
+            key: { readOnly: true, show: Inspector.showIfPresent },
+            maxLinks: { type: "number", defaultValue: Infinity, show: Inspector.showIfNode }
+          }
+        });
+      let x = "red"
+      /*var dataObj = myDiagram.model.findNodeDataForKey("2");
+      myDiagram.model.set(dataObj, "color", x);*/
+
+      var dawn = myDiagram.model.findNodeDataForKey("2");
+      myDiagram.model = go.model.copyNodeDataFunction = function (Obj, Model) {
+        var a = new Array();
+        a[0] = 1;
+        return a;
+
+
+      };
+      console.log("dwdw")
+
+
+
+
+    }
+
+
+    function getvar(somie) {
+      var sp = somie.find(item => item.key == 0)
+      var olo = sp.text;
+      document.getElementById("wdwd").innerHTML = olo;
+      for (let i = 0; i != -1; i++) {
+        sp = somie.find(item => item.key == 0)
+        olo = sp.text;
+        document.getElementById("wdwd").innerHTML = olo;
+      }
+    }
+
+    /*function copyNodeDataFunction(object, model) {
+      var newObject = {}
+      Object.keys(object).forEach(function(key){
+        if(key != "__gohashid" && key !="id")
+          newObject[key] = object[key];
+      });
+      return newObject;
+    }*/
+  </script>
+</head>
+
+<body onload="init()" onload="onit()">
+  <form id="nse">
+    <input id="funny" type="text" name="color">
+    <input type="button" onclick="getVar()" value="play">
+  </form>
+  <p id="demo"></p>
+  <div id="myDiagramDiv" style="border: solid 1px black; width:100%; height:600px"></div>
+
+  <div id="myInspectorDiv" class="inspector"></div>
+  <p id="wdwd"></p>
+
+</body>
+
+</html>
